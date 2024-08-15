@@ -27,11 +27,14 @@ int main(int argc, char *argv[]) {
     struct planar_server server = {0};
     server_init(&server);
 
-	if (startup_cmd) {
-		if (fork() == 0) {
-			execl("/bin/sh", "/bin/sh", "-c", startup_cmd, (void *)NULL);
-		}
-	}    
+	setenv("WAYLAND_DISPLAY", server.socket, true);
+
+    wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s", server.socket);
+    wlr_log(WLR_INFO, "WAYLAND_DISPLAY set to %s", getenv("WAYLAND_DISPLAY"));
+
+    if (fork() == 0) {
+        execl("/bin/sh", "/bin/sh", "-c", "foot", (void *)NULL);
+    }
 
     server_run(&server);
     server_finish(&server);

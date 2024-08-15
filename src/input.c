@@ -14,16 +14,16 @@ int keyboard_repeat_func(void *data) {
     float move_step = 10.0f;
 
     if (server->key_state.left_pressed) {
-        server->global_offset.x -= move_step;
-    }
-    if (server->key_state.right_pressed) {
         server->global_offset.x += move_step;
     }
+    if (server->key_state.right_pressed) {
+        server->global_offset.x -= move_step;
+    }
     if (server->key_state.up_pressed) {
-        server->global_offset.y -= move_step;
+        server->global_offset.y += move_step;
     }
     if (server->key_state.down_pressed) {
-        server->global_offset.y += move_step;
+        server->global_offset.y -= move_step;
     }
 
     if (server->key_state.left_pressed || server->key_state.right_pressed ||

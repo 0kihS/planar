@@ -70,29 +70,25 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 
 void server_init(struct planar_server *server) {
     server->wl_display = wl_display_create();
-    assert(server->wl_display);
     server->backend = wlr_backend_autocreate(wl_display_get_event_loop(server->wl_display), NULL);
-    assert(server->backend);
-
     server->renderer = wlr_renderer_autocreate(server->backend);
-    assert(server->renderer);
-
     wlr_renderer_init_wl_display(server->renderer, server->wl_display);
 
     server->allocator = wlr_allocator_autocreate(server->backend, server->renderer);
-    assert(server->allocator);
 
-    server->scene = wlr_scene_create();
-    assert(server->scene);
-
-    server->output_layout = wlr_output_layout_create(server->wl_display);
-    assert(server->output_layout);
-
-    server->scene_layout = wlr_scene_attach_output_layout(server->scene, server->output_layout);
+    wlr_compositor_create(server->wl_display, 5, server->renderer);
+    wlr_subcompositor_create(server->wl_display);
+    wlr_data_device_manager_create(server->wl_display);
 
     wl_list_init(&server->outputs);
     server->new_output.notify = server_new_output;
     wl_signal_add(&server->backend->events.new_output, &server->new_output);
+
+    server->output_layout = wlr_output_layout_create(server->wl_display);
+
+    server->scene = wlr_scene_create();
+
+    server->scene_layout = wlr_scene_attach_output_layout(server->scene, server->output_layout);
 
     server->xdg_shell = wlr_xdg_shell_create(server->wl_display, 3);
     assert(server->xdg_shell);
@@ -125,33 +121,25 @@ void server_init(struct planar_server *server) {
 
     seat_init(server);
 
-    wlr_compositor_create(server->wl_display, 5, server->renderer);
-    wlr_subcompositor_create(server->wl_display);
-    wlr_data_device_manager_create(server->wl_display);
-
     server->global_offset.x = 0;
     server->global_offset.y = 0;
 
-}
-
-void server_run(struct planar_server *server) {
     const char *socket = wl_display_add_socket_auto(server->wl_display);
     if (!socket) {
         wlr_log(WLR_ERROR, "Unable to create Wayland socket");
         return;
     }
 
+    server->socket = socket;
+}
+
+void server_run(struct planar_server *server) {
+
     if (!wlr_backend_start(server->backend)) {
         wlr_log(WLR_ERROR, "Unable to start backend");
         return;
-    }
-
-    setenv("WAYLAND_DISPLAY", socket, true);
-
-    wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s", socket);
+    }    
     wl_display_run(server->wl_display);
-
-    execl("/bin/sh", "/bin/sh", "-c", "foot", (void *)NULL);
 }
 
 void server_finish(struct planar_server *server) {
