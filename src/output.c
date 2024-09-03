@@ -1,4 +1,6 @@
 #include "output.h"
+#include "layers.h"
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
@@ -15,6 +17,8 @@ void output_frame(struct wl_listener *listener, void *data) {
     // Apply the global offset to the scene output
     wlr_scene_output_set_position(scene_output,
         -server->global_offset.x, -server->global_offset.y);
+
+    arrange_layers(output);
 
     /* Render the scene if needed and commit the output */
     wlr_scene_output_commit(scene_output, NULL);
@@ -37,6 +41,12 @@ void output_destroy(struct wl_listener *listener, void *data) {
     wl_list_remove(&output->request_state.link);
     wl_list_remove(&output->destroy.link);
     wl_list_remove(&output->link);
+
+    struct planar_layer_surface *layer_view;
+    wl_list_for_each(layer_view, &output->layer_views, output_link){
+        layer_view->output = NULL;
+        wlr_layer_surface_v1_destroy(layer_view->layer_surface);
+    }
     free(output);
 }
 
@@ -61,6 +71,8 @@ void output_create(struct wl_listener *listener, void *data) {
     struct planar_output *output = calloc(1, sizeof(*output));
     output->wlr_output = wlr_output;
     output->server = server;
+
+    wl_list_init(&output->layer_views);
 
     output->frame.notify = output_frame;
     wl_signal_add(&wlr_output->events.frame, &output->frame);

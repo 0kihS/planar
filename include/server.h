@@ -35,9 +35,13 @@ struct planar_server {
 	struct wlr_scene_output_layout *scene_layout;
 
 	struct wlr_xdg_shell *xdg_shell;
+	struct wlr_layer_shell_v1 *layer_shell;
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_xdg_popup;
 	struct wl_list toplevels;
+
+	struct wlr_scene_tree *layers[4];
+    struct wl_listener new_layer_shell_surface;
 
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;

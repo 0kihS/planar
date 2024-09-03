@@ -5,10 +5,79 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
 
+static void begin_interactive(struct planar_toplevel *toplevel,
+		enum planar_cursor_mode mode, uint32_t edges) {
+	/* This function sets up an interactive move or resize operation, where the
+	 * compositor stops propegating pointer events to clients and instead
+	 * consumes them itself, to move or resize windows. */
+	struct planar_server *server = toplevel->server;
+	struct wlr_surface *focused_surface =
+		server->seat->pointer_state.focused_surface;
+	if (toplevel->xdg_toplevel->base->surface !=
+			wlr_surface_get_root_surface(focused_surface)) {
+		/* Deny move/resize requests from unfocused clients. */
+		return;
+	}
+	server->grabbed_toplevel = toplevel;
+	server->cursor_mode = mode;
+
+	if (mode == PLANAR_CURSOR_MOVE) {
+		server->grab_x = server->cursor->x - toplevel->scene_tree->node.x;
+		server->grab_y = server->cursor->y - toplevel->scene_tree->node.y;
+	} else {
+		struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
+
+		double border_x = (toplevel->scene_tree->node.x + geo_box->x) +
+			((edges & WLR_EDGE_RIGHT) ? geo_box->width : 0);
+		double border_y = (toplevel->scene_tree->node.y + geo_box->y) +
+			((edges & WLR_EDGE_BOTTOM) ? geo_box->height : 0);
+		server->grab_x = server->cursor->x - border_x;
+		server->grab_y = server->cursor->y - border_y;
+
+		server->grab_geobox = *geo_box;
+		server->grab_geobox.x += toplevel->scene_tree->node.x;
+		server->grab_geobox.y += toplevel->scene_tree->node.y;
+
+		server->resize_edges = edges;
+	}
+}
+
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, map);
     wl_list_insert(&toplevel->server->toplevels, &toplevel->link);
     focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
+}
+
+static void xdg_toplevel_maximize(
+		struct wl_listener *listener, void *data) {
+	struct planar_toplevel *toplevel =
+		wl_container_of(listener, toplevel, request_maximize);
+	if (toplevel->xdg_toplevel->base->initialized) {
+		wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
+	}
+}
+
+static void xdg_toplevel_fullscreen(
+		struct wl_listener *listener, void *data) {
+	/* Just as with request_maximize, we must send a configure here. */
+	struct planar_toplevel *toplevel =
+		wl_container_of(listener, toplevel, request_fullscreen);
+	if (toplevel->xdg_toplevel->base->initialized) {
+		wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
+	}
+}
+
+static void xdg_toplevel_resize(
+		struct wl_listener *listener, void *data) {
+	struct wlr_xdg_toplevel_resize_event *event = data;
+	struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, request_resize);
+	begin_interactive(toplevel, PLANAR_CURSOR_RESIZE, event->edges);
+}
+
+static void xdg_toplevel_move(
+	struct wl_listener *listener, void *data) {
+	struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, request_move);
+	begin_interactive(toplevel, PLANAR_CURSOR_MOVE, 0);
 }
 
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
@@ -36,63 +105,6 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
     free(toplevel);
 }
 
-static void begin_interactive(struct planar_toplevel *toplevel,
-                              enum planar_cursor_mode mode, uint32_t edges) {
-    struct planar_server *server = toplevel->server;
-    struct wlr_surface *focused_surface = server->seat->pointer_state.focused_surface;
-    if (toplevel->xdg_toplevel->base->surface != wlr_surface_get_root_surface(focused_surface)) {
-        return;
-    }
-    server->grabbed_toplevel = toplevel;
-    server->cursor_mode = mode;
-
-    if (mode == PLANAR_CURSOR_MOVE) {
-        server->grab_x = server->cursor->x - toplevel->scene_tree->node.x;
-        server->grab_y = server->cursor->y - toplevel->scene_tree->node.y;
-    } else {
-        struct wlr_box geo_box;
-        wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geo_box);
-
-        double border_x = (toplevel->scene_tree->node.x + geo_box.x) +
-                          ((edges & WLR_EDGE_RIGHT) ? geo_box.width : 0);
-        double border_y = (toplevel->scene_tree->node.y + geo_box.y) +
-                          ((edges & WLR_EDGE_BOTTOM) ? geo_box.height : 0);
-        server->grab_x = server->cursor->x - border_x;
-        server->grab_y = server->cursor->y - border_y;
-
-        server->grab_geobox = geo_box;
-        server->grab_geobox.x += toplevel->scene_tree->node.x;
-        server->grab_geobox.y += toplevel->scene_tree->node.y;
-
-        server->resize_edges = edges;
-    }
-}
-
-static void xdg_toplevel_request_move(struct wl_listener *listener, void *data) {
-    struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, request_move);
-    begin_interactive(toplevel, PLANAR_CURSOR_MOVE, 0);
-}
-
-static void xdg_toplevel_request_resize(struct wl_listener *listener, void *data) {
-    struct wlr_xdg_toplevel_resize_event *event = data;
-    struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, request_resize);
-    begin_interactive(toplevel, PLANAR_CURSOR_RESIZE, event->edges);
-}
-
-static void xdg_toplevel_request_maximize(struct wl_listener *listener, void *data) {
-    struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, request_maximize);
-    if (toplevel->xdg_toplevel->base->initialized) {
-        wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
-    }
-}
-
-static void xdg_toplevel_request_fullscreen(struct wl_listener *listener, void *data) {
-    struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, request_fullscreen);
-    if (toplevel->xdg_toplevel->base->initialized) {
-        wlr_xdg_surface_schedule_configure(toplevel->xdg_toplevel->base);
-    }
-}
-
 void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     struct planar_server *server = wl_container_of(listener, server, new_xdg_toplevel);
     struct wlr_xdg_toplevel *xdg_toplevel = data;
@@ -114,13 +126,13 @@ void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     toplevel->destroy.notify = xdg_toplevel_destroy;
     wl_signal_add(&xdg_toplevel->events.destroy, &toplevel->destroy);
 
-    toplevel->request_move.notify = xdg_toplevel_request_move;
+    toplevel->request_move.notify = xdg_toplevel_move;
     wl_signal_add(&xdg_toplevel->events.request_move, &toplevel->request_move);
-    toplevel->request_resize.notify = xdg_toplevel_request_resize;
+    toplevel->request_resize.notify = xdg_toplevel_resize;
     wl_signal_add(&xdg_toplevel->events.request_resize, &toplevel->request_resize);
-    toplevel->request_maximize.notify = xdg_toplevel_request_maximize;
+    toplevel->request_maximize.notify = xdg_toplevel_maximize;
     wl_signal_add(&xdg_toplevel->events.request_maximize, &toplevel->request_maximize);
-    toplevel->request_fullscreen.notify = xdg_toplevel_request_fullscreen;
+    toplevel->request_fullscreen.notify = xdg_toplevel_fullscreen;
     wl_signal_add(&xdg_toplevel->events.request_fullscreen, &toplevel->request_fullscreen);
 }
 

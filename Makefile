@@ -12,7 +12,7 @@ PKGS = wlroots-0.19 wayland-server xkbcommon
 CFLAGS_PKG_CONFIG!=$(PKG_CONFIG) --cflags $(PKGS)
 CFLAGS+=$(CFLAGS_PKG_CONFIG)
 LIBS!=$(PKG_CONFIG) --libs $(PKGS)
-CFLAGS += -Werror -I./include -DWLR_USE_UNSTABLE
+CFLAGS += -Werror -I./include -DWLR_USE_UNSTABLE -g
 INC=-I/include
 
 # Directories
@@ -34,13 +34,16 @@ all: $(TARGET)
 xdg-shell-protocol.h:
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+wlr-layer-shell-unstable-v1-protocol.h:
+	$(WAYLAND_SCANNER) server-header \
+		./protocols/wlr_layer_shell_unstable_v1.xml $@
 
 # Rule to create directories
 $(OBJ_DIR) $(BIN_DIR):
 	mkdir -p $@
 
 # Rule to compile .c files into .o files
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c xdg-shell-protocol.h | $(OBJ_DIR)
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h | $(OBJ_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Rule to link object files into the final binary

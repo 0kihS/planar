@@ -10,6 +10,10 @@ struct planar_output {
     struct wl_listener frame;
     struct wl_listener request_state;
     struct wl_listener destroy;
+
+    struct wl_list layer_views;
+
+    struct wlr_box usable_area;
 };
 
 void output_frame(struct wl_listener *listener, void *data);

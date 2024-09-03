@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
     wlr_log(WLR_INFO, "WAYLAND_DISPLAY set to %s", getenv("WAYLAND_DISPLAY"));
 
     if (fork() == 0) {
-        execl("/bin/sh", "/bin/sh", "-c", "foot", (void *)NULL);
+        execl("/bin/sh", "/bin/sh", "-c", startup_cmd, (void *)NULL);
     }
 
     server_run(&server);

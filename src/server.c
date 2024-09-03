@@ -5,6 +5,7 @@
 #include "popup.h"
 #include "cursor.h"
 #include "seat.h"
+#include "layers.h"
 
 #include <unistd.h>
 #include <assert.h>
@@ -13,6 +14,7 @@
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_subcompositor.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/util/log.h>
 
 void convert_scene_coords_to_global(struct planar_server *server, double *x, double *y) {
@@ -90,8 +92,17 @@ void server_init(struct planar_server *server) {
 
     server->scene_layout = wlr_scene_attach_output_layout(server->scene, server->output_layout);
 
+    for (int i = 0; i < 4; i++) {
+        server->layers[i] = wlr_scene_tree_create(&server->scene->tree);
+    }
+
     server->xdg_shell = wlr_xdg_shell_create(server->wl_display, 3);
     assert(server->xdg_shell);
+
+    server->layer_shell = wlr_layer_shell_v1_create(server->wl_display, 4);
+
+    server->new_layer_shell_surface.notify = server_layer_shell_surface;
+    wl_signal_add(&server->layer_shell->events.new_surface, &server->new_layer_shell_surface);
 
     wl_list_init(&server->toplevels);
     server->new_xdg_toplevel.notify = server_new_xdg_toplevel;
@@ -138,7 +149,7 @@ void server_run(struct planar_server *server) {
     if (!wlr_backend_start(server->backend)) {
         wlr_log(WLR_ERROR, "Unable to start backend");
         return;
-    }    
+    }
     wl_display_run(server->wl_display);
 }
 
