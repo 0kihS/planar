@@ -72,8 +72,8 @@ struct planar_server {
 	uint32_t resize_edges;
 
     struct {
-        float x;
-        float y;
+        double x;
+        double y;
     } global_offset;
 
 	struct wlr_output_layout *output_layout;

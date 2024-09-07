@@ -1,6 +1,9 @@
 #include "output.h"
 #include "layers.h"
+#include "toplevel.h"
+
 #include <wlr/types/wlr_layer_shell_v1.h>
+#include <math.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
@@ -15,8 +18,13 @@ void output_frame(struct wl_listener *listener, void *data) {
         scene, output->wlr_output);
 
     // Apply the global offset to the scene output
-    wlr_scene_output_set_position(scene_output,
-        -server->global_offset.x, -server->global_offset.y);
+    struct planar_toplevel *toplevel;
+    wl_list_for_each(toplevel, &server->toplevels, link) {
+        // Adjust the position by global_offset
+        wlr_scene_node_set_position(&toplevel->scene_tree->node,
+                                    toplevel->scene_tree->node.x + round(server->global_offset.x),
+                                    toplevel->scene_tree->node.y + round(server->global_offset.y));
+    }
 
     arrange_layers(output);
 
@@ -25,6 +33,14 @@ void output_frame(struct wl_listener *listener, void *data) {
 
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
+
+        wl_list_for_each(toplevel, &server->toplevels, link) {
+    // Reset the position back to original
+    wlr_scene_node_set_position(&toplevel->scene_tree->node,
+                                toplevel->scene_tree->node.x - round(server->global_offset.x),
+                                toplevel->scene_tree->node.y - round(server->global_offset.y));
+}
+
     wlr_scene_output_send_frame_done(scene_output, &now);
 }
 

@@ -12,7 +12,7 @@ PKGS = wlroots-0.19 wayland-server xkbcommon
 CFLAGS_PKG_CONFIG!=$(PKG_CONFIG) --cflags $(PKGS)
 CFLAGS+=$(CFLAGS_PKG_CONFIG)
 LIBS!=$(PKG_CONFIG) --libs $(PKGS)
-CFLAGS += -Werror -I./include -DWLR_USE_UNSTABLE -g
+CFLAGS += -Werror -I./include -DWLR_USE_UNSTABLE -g -lm
 INC=-I/include
 
 # Directories

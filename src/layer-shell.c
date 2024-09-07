@@ -9,7 +9,6 @@
 #include "layers.h"
 #include "output.h"
 #include "popup.h"
-#include "tree.h"
 
 void arrange_layers(struct planar_output *output) {
     struct wlr_box usable_area;
