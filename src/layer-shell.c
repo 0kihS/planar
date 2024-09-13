@@ -28,6 +28,10 @@ void arrange_layers(struct planar_output *output) {
             }
 
             struct wlr_layer_surface_v1 *layer_surface = planar_layer_surface->layer_surface;
+            if (!layer_surface) {
+                continue;
+            }
+
             if (!layer_surface->initialized) {
                 continue;
             }
@@ -121,6 +125,9 @@ void server_layer_shell_surface(struct wl_listener *listener, void *data) {
 
 void server_layer_shell_surface_map(struct wl_listener *listener, void *data) {
     struct planar_layer_surface *layer_surface = wl_container_of(listener, layer_surface, surface_map);
+    if (layer_surface->layer_surface->current.keyboard_interactive) {
+        focus_layer_surface(layer_surface, layer_surface->layer_surface->surface);
+    }
     
     layer_surface->mapped = true;
     arrange_layers(layer_surface->output);
@@ -176,6 +183,38 @@ void server_layer_shell_surface_commit(struct wl_listener *listener, void *data)
 	}
 }
 
+struct planar_layer_surface *layer_surface_at(struct planar_server *server, double lx, double ly,
+                                            struct wlr_surface **surface, double *sx, double *sy) {
+    struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node, lx, ly, sx, sy);
+    if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
+        return NULL;
+    }
+    struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
+    struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
+    if (!scene_surface) {
+        return NULL;
+    }
+
+    *surface = scene_surface->surface;
+
+    struct wlr_scene_tree *tree = node->parent;
+    while (tree != NULL && tree->node.data == NULL) {
+        tree = tree->node.parent;
+    }
+    return tree->node.data;
+}
+
+void focus_layer_surface(struct planar_layer_surface *layer_surface, struct wlr_surface *surface) {
+    if (layer_surface == NULL) {
+        return;
+    }
+    struct wlr_seat *seat = layer_surface->server->seat;
+    struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
+    if (keyboard) {
+        wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes,
+                                       keyboard->num_keycodes, &keyboard->modifiers);
+    }
+}
 
 static struct wlr_scene_tree *planar_layer_get_scene(struct planar_output *output,
 		enum zwlr_layer_shell_v1_layer type) {

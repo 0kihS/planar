@@ -2,6 +2,7 @@
 #include "server.h"
 #include "toplevel.h"
 #include "output.h"
+#include "layers.h"
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/edges.h>
@@ -231,6 +232,8 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
     struct wlr_surface *surface = NULL;
     struct planar_toplevel *toplevel = desktop_toplevel_at(server,
             server->cursor->x, server->cursor->y, &surface, &sx, &sy);
+	struct planar_layer_surface *layer_surface = layer_surface_at(server,
+            server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 
 
     if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
@@ -243,7 +246,14 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
         reset_cursor_mode(server);
     } else {
         // Focus that client if the button was _pressed_
-        focus_toplevel(toplevel, surface);
+		if (toplevel) {
+			if (toplevel->server) {
+        		focus_toplevel(toplevel, surface);
+			}
+		}
+		else {
+			focus_layer_surface(layer_surface, surface);
+		}
     }
 }
 

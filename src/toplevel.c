@@ -108,11 +108,12 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
 void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     struct planar_server *server = wl_container_of(listener, server, new_xdg_toplevel);
     struct wlr_xdg_toplevel *xdg_toplevel = data;
-
+    struct wlr_scene_tree *layer_tree = server->layers[2];
     struct planar_toplevel *toplevel = calloc(1, sizeof(*toplevel));
+
     toplevel->server = server;
     toplevel->xdg_toplevel = xdg_toplevel;
-    toplevel->scene_tree = wlr_scene_xdg_surface_create(&toplevel->server->scene->tree, xdg_toplevel->base);
+    toplevel->scene_tree = wlr_scene_xdg_surface_create(layer_tree, xdg_toplevel->base);
     toplevel->scene_tree->node.data = toplevel;
     xdg_toplevel->base->data = toplevel->scene_tree;
 

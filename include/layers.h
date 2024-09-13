@@ -30,6 +30,9 @@ void server_layer_shell_surface_map(struct wl_listener *listener, void *data);
 void server_layer_shell_surface_unmap(struct wl_listener *listener, void *data);
 void server_layer_shell_surface_destroy(struct wl_listener *listener, void *data);
 void server_layer_shell_surface_commit(struct wl_listener *listener, void *data);
+struct planar_layer_surface *layer_surface_at(struct planar_server *server, double lx, double ly,
+                                            struct wlr_surface **surface, double *sx, double *sy);
+void focus_layer_surface(struct planar_layer_surface *layer_surface, struct wlr_surface *surface);
 static struct wlr_scene_tree *planar_layer_get_scene(struct planar_output *output,
 		enum zwlr_layer_shell_v1_layer type);
 void arrange_layers(struct planar_output *output);
