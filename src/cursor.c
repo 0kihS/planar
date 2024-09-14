@@ -81,27 +81,35 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
 	struct wlr_surface *surface = NULL;
 	struct planar_toplevel *toplevel = desktop_toplevel_at(server,
 			cx, cy, &surface, &sx, &sy);
-	if (!toplevel) {
-		/* If there's no toplevel under the cursor, set the cursor image to a
+	struct planar_layer_surface *layer_surface = layer_surface_at(server,
+            cx, cy, &surface, &sx, &sy);
+	if (!toplevel && !layer_surface) {
+		/* If there's no toplevel or layer surface under the cursor, set the cursor image to a
 		 * default. This is what makes the cursor image appear when you move it
 		 * around the screen, not over any toplevels. */
 		wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
 	}
 	if (surface) {
-		/*
-		 * Send pointer enter and motion events.
-		 *
-		 * The enter event gives the surface "pointer focus", which is distinct
-		 * from keyboard focus. You get pointer focus by moving the pointer over
-		 * a window.
-		 *
-		 * Note that wlroots will avoid sending duplicate enter/motion events if
-		 * the surface has already has pointer focus or if the client is already
-		 * aware of the coordinates passed.
-		 */
-		wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
-		wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-	} else {
+	    if (!toplevel) {
+            // Check for layer shell surfaces
+            struct planar_layer_surface *layer_surface = layer_surface_at(server,
+                cx, cy, &surface, &sx, &sy);
+            if (layer_surface) {
+                // For layer surfaces, use the original coordinates
+                wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+                wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+                return;
+            }
+    	}
+    	else {
+        	// For XDG toplevel surfaces, apply the global offset
+        	sx += server->global_offset.x;
+        	sy += server->global_offset.y;
+			wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+            wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+		}
+	}
+	else {
 		/* Clear pointer focus so future button events and such are not sent to
 		 * the last client to have the cursor over it. */
 		wlr_seat_pointer_clear_focus(seat);
@@ -198,7 +206,6 @@ static void server_cursor_motion(struct wl_listener *listener, void *data) {
     }
 	double cx = server->cursor->x;
     double cy = server->cursor->y;
-    convert_global_coords_to_scene(server, &cx, &cy);
 	process_cursor_motion(server, cx, cy, event->time_msec);
 }
 
@@ -217,7 +224,6 @@ static void server_cursor_motion_absolute(
 		event->y);
 	double cx = server->cursor->x;
     double cy = server->cursor->y;
-    convert_global_coords_to_scene(server, &cx, &cy);
 	process_cursor_motion(server, cx, cy, event->time_msec);
 }
 
@@ -225,7 +231,7 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
     struct planar_server *server =
         wl_container_of(listener, server, cursor_button);
     struct wlr_pointer_button_event *event = data;
-    
+
     wlr_seat_pointer_notify_button(server->seat,
             event->time_msec, event->button, event->state);
     double sx, sy;
@@ -251,7 +257,7 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
         		focus_toplevel(toplevel, surface);
 			}
 		}
-		else {
+		else if (layer_surface) {
 			focus_layer_surface(layer_surface, surface);
 		}
     }

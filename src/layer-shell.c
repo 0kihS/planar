@@ -28,10 +28,6 @@ void arrange_layers(struct planar_output *output) {
             }
 
             struct wlr_layer_surface_v1 *layer_surface = planar_layer_surface->layer_surface;
-            if (!layer_surface) {
-                continue;
-            }
-
             if (!layer_surface->initialized) {
                 continue;
             }
@@ -80,12 +76,12 @@ void server_layer_shell_surface(struct wl_listener *listener, void *data) {
         // Use the first output if the client didn't specify one
         output = wl_container_of(server->outputs.next, output, link);
     }
-    
+
     // Get the appropriate scene tree for this layer
     struct wlr_scene_tree *layer_tree = server->layers[layer_surface->pending.layer];
 
     // Create the scene layer surface
-    struct wlr_scene_layer_surface_v1 *scene_layer_surface = 
+    struct wlr_scene_layer_surface_v1 *scene_layer_surface =
         wlr_scene_layer_surface_v1_create(layer_tree, layer_surface);
     if (!scene_layer_surface) {
         wlr_layer_surface_v1_destroy(layer_surface);
@@ -128,14 +124,14 @@ void server_layer_shell_surface_map(struct wl_listener *listener, void *data) {
     if (layer_surface->layer_surface->current.keyboard_interactive) {
         focus_layer_surface(layer_surface, layer_surface->layer_surface->surface);
     }
-    
+
     layer_surface->mapped = true;
     arrange_layers(layer_surface->output);
 }
 
 void server_layer_shell_surface_unmap(struct wl_listener *listener, void *data) {
     struct planar_layer_surface *layer_surface = wl_container_of(listener, layer_surface, surface_unmap);
-    
+
     layer_surface->mapped = false;
     arrange_layers(layer_surface->output);
 }
@@ -205,7 +201,7 @@ struct planar_layer_surface *layer_surface_at(struct planar_server *server, doub
 }
 
 void focus_layer_surface(struct planar_layer_surface *layer_surface, struct wlr_surface *surface) {
-    if (layer_surface == NULL) {
+    if(!layer_surface) {
         return;
     }
     struct wlr_seat *seat = layer_surface->server->seat;

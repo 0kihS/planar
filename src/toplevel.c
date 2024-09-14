@@ -108,7 +108,7 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
 void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     struct planar_server *server = wl_container_of(listener, server, new_xdg_toplevel);
     struct wlr_xdg_toplevel *xdg_toplevel = data;
-    struct wlr_scene_tree *layer_tree = server->layers[2];
+    struct wlr_scene_tree *layer_tree = server->layers[1];
     struct planar_toplevel *toplevel = calloc(1, sizeof(*toplevel));
 
     toplevel->server = server;
@@ -169,7 +169,10 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
 
 struct planar_toplevel *desktop_toplevel_at(struct planar_server *server, double lx, double ly,
                                             struct wlr_surface **surface, double *sx, double *sy) {
-    struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node, lx, ly, sx, sy);
+    double adjusted_lx = lx - server->global_offset.x;
+    double adjusted_ly = ly - server->global_offset.y;
+    
+    struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node, adjusted_lx, adjusted_ly, sx, sy);
     if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
         return NULL;
     }

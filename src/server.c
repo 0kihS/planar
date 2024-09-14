@@ -15,6 +15,8 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_screencopy_v1.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/util/log.h>
 
 void convert_scene_coords_to_global(struct planar_server *server, double *x, double *y) {
@@ -81,6 +83,7 @@ void server_init(struct planar_server *server) {
     wlr_compositor_create(server->wl_display, 5, server->renderer);
     wlr_subcompositor_create(server->wl_display);
     wlr_data_device_manager_create(server->wl_display);
+    wlr_screencopy_manager_v1_create(server->wl_display);
 
     wl_list_init(&server->outputs);
     server->new_output.notify = server_new_output;
@@ -89,6 +92,8 @@ void server_init(struct planar_server *server) {
     server->output_layout = wlr_output_layout_create(server->wl_display);
 
     server->scene = wlr_scene_create();
+
+    wlr_xdg_output_manager_v1_create(server->wl_display, server->output_layout);
 
     server->scene_layout = wlr_scene_attach_output_layout(server->scene, server->output_layout);
 
