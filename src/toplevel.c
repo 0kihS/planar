@@ -168,11 +168,8 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
 }
 
 struct planar_toplevel *desktop_toplevel_at(struct planar_server *server, double lx, double ly,
-                                            struct wlr_surface **surface, double *sx, double *sy) {
-    double adjusted_lx = lx - server->global_offset.x;
-    double adjusted_ly = ly - server->global_offset.y;
-    
-    struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node, adjusted_lx, adjusted_ly, sx, sy);
+                                            struct wlr_surface **surface, double *sx, double *sy) { 
+    struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node, lx, ly, sx, sy);
     if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
         return NULL;
     }

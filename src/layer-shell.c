@@ -28,7 +28,7 @@ void arrange_layers(struct planar_output *output) {
             }
 
             struct wlr_layer_surface_v1 *layer_surface = planar_layer_surface->layer_surface;
-            if (!layer_surface->initialized) {
+            if (!layer_surface || !layer_surface->initialized) {
                 continue;
             }
 

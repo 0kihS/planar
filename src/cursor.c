@@ -6,6 +6,7 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/edges.h>
+#include <string.h>
 #include <linux/input-event-codes.h>
 
 static struct planar_toplevel *desktop_toplevel_at(
@@ -75,45 +76,40 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
         process_cursor_resize(server, time);
         return;
     }
-	/* Otherwise, find the toplevel under the pointer and send the event along. */
-	double sx, sy;
-	struct wlr_seat *seat = server->seat;
-	struct wlr_surface *surface = NULL;
-	struct planar_toplevel *toplevel = desktop_toplevel_at(server,
-			cx, cy, &surface, &sx, &sy);
-	struct planar_layer_surface *layer_surface = layer_surface_at(server,
+
+    /* First, check for layer surfaces using global coordinates */
+    double sx, sy;
+    struct wlr_seat *seat = server->seat;
+    struct wlr_surface *surface = NULL;
+    struct planar_layer_surface *layer_surface = layer_surface_at(server,
             cx, cy, &surface, &sx, &sy);
-	if (!toplevel && !layer_surface) {
-		/* If there's no toplevel or layer surface under the cursor, set the cursor image to a
-		 * default. This is what makes the cursor image appear when you move it
-		 * around the screen, not over any toplevels. */
-		wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
-	}
-	if (surface) {
-	    if (!toplevel) {
-            // Check for layer shell surfaces
-            struct planar_layer_surface *layer_surface = layer_surface_at(server,
-                cx, cy, &surface, &sx, &sy);
-            if (layer_surface) {
-                // For layer surfaces, use the original coordinates
-                wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
-                wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-                return;
-            }
-    	}
-    	else {
-        	// For XDG toplevel surfaces, apply the global offset
-        	sx += server->global_offset.x;
-        	sy += server->global_offset.y;
-			wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+
+    if (layer_surface && strcmp(surface->role->name, "zwlr_layer_surface_v1") == 0) {
+        if (surface) {
+            wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
             wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-		}
-	}
-	else {
-		/* Clear pointer focus so future button events and such are not sent to
-		 * the last client to have the cursor over it. */
-		wlr_seat_pointer_clear_focus(seat);
-	}
+        }
+        return;
+    }
+
+    /* If no layer surface was found, apply the offset and check for regular windows */
+    convert_global_coords_to_scene(server, &cx, &cy);
+
+    struct planar_toplevel *toplevel = desktop_toplevel_at(server,
+            cx, cy, &surface, &sx, &sy);
+
+    if (toplevel && toplevel->server) {
+        if (surface) {
+            wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+            wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+        }
+    } else {
+        /* If there's no toplevel under the cursor, set the cursor image to a
+         * default. This is what makes the cursor image appear when you move it
+         * around the screen, not over any toplevels. */
+        wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
+        wlr_seat_pointer_clear_focus(seat);
+    }
 }
 
 void process_cursor_move(struct planar_server *server, uint32_t time) {
