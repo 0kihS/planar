@@ -4,12 +4,14 @@
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include "server.h"
+#include "workspaces.h"
 
 struct planar_toplevel {
     struct wl_list link;
     struct planar_server *server;
     struct wlr_xdg_toplevel *xdg_toplevel;
     struct wlr_scene_tree *scene_tree;
+    struct planar_workspace *workspace;
 
     struct wl_listener map;
     struct wl_listener unmap;

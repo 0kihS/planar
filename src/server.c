@@ -6,6 +6,8 @@
 #include "cursor.h"
 #include "seat.h"
 #include "layers.h"
+#include "workspaces.h"
+#include "config.h"
 
 #include <unistd.h>
 #include <assert.h>
@@ -20,13 +22,13 @@
 #include <wlr/util/log.h>
 
 void convert_scene_coords_to_global(struct planar_server *server, double *x, double *y) {
-    *x += server->global_offset.x;
-    *y += server->global_offset.y;
+    *x += server->active_workspace->global_offset.x;
+    *y += server->active_workspace->global_offset.y;
 }
 
 void convert_global_coords_to_scene(struct planar_server *server, double *x, double *y) {
-    *x -= server->global_offset.x;
-    *y -= server->global_offset.y;
+    *x -= server->active_workspace->global_offset.x;
+    *y -= server->active_workspace->global_offset.y;
 }
 
 static void server_new_input(struct wl_listener *listener, void *data) {
@@ -113,6 +115,22 @@ void server_init(struct planar_server *server) {
     server->new_xdg_toplevel.notify = server_new_xdg_toplevel;
     wl_signal_add(&server->xdg_shell->events.new_toplevel, &server->new_xdg_toplevel);
 
+    server->config = config_load(NULL);
+        if (!server->config) {
+            wlr_log(WLR_INFO, "No config file found, using defaults");
+        }
+
+    wl_list_init(&server->workspaces);
+    for (int i = 0; i < WORKSPACE_COUNT; i++) {
+        struct planar_workspace *ws = calloc(1, sizeof(*ws));
+        ws->index = i;
+        ws->scene_tree = wlr_scene_tree_create(server->layers[1]);
+        wl_list_init(&ws->toplevels);
+        wl_list_insert(&server->workspaces, &ws->link);
+    }
+    server->active_workspace = wl_container_of(server->workspaces.next, server->active_workspace, link);
+
+    switch_to_workspace(server, 0);
     server->new_xdg_popup.notify = server_new_xdg_popup;
     wl_signal_add(&server->xdg_shell->events.new_popup, &server->new_xdg_popup);
 
@@ -137,8 +155,15 @@ void server_init(struct planar_server *server) {
 
     seat_init(server);
 
-    server->global_offset.x = 0;
-    server->global_offset.y = 0;
+    struct planar_workspace *workspace;
+    wl_list_for_each(workspace, &server->workspaces, link) {
+        if (workspace->index == 0) {
+            server->active_workspace = workspace;
+        }
+
+        workspace->global_offset.x = 0;
+        workspace->global_offset.y = 0;
+    }
 
     const char *socket = wl_display_add_socket_auto(server->wl_display);
     if (!socket) {
@@ -147,6 +172,8 @@ void server_init(struct planar_server *server) {
     }
 
     server->socket = socket;
+
+    switch_to_workspace(server, 0);
 }
 
 void server_run(struct planar_server *server) {
@@ -159,6 +186,9 @@ void server_run(struct planar_server *server) {
 }
 
 void server_finish(struct planar_server *server) {
+    if (server->config) {
+            config_destroy(server->config);
+        }
     wl_display_destroy_clients(server->wl_display);
     wlr_scene_node_destroy(&server->scene->tree.node);
     wlr_xcursor_manager_destroy(server->cursor_mgr);

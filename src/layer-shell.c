@@ -88,6 +88,8 @@ void server_layer_shell_surface(struct wl_listener *listener, void *data) {
         return;
     }
 
+    wlr_scene_node_set_enabled(&scene_layer_surface->tree->node, true);
+
     // Create and initialize your planar_layer_surface
     struct planar_layer_surface *planar_layer_surface = calloc(1, sizeof(struct planar_layer_surface));
     if (!planar_layer_surface) {

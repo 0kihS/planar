@@ -9,23 +9,28 @@
 #include <wlr/types/wlr_scene.h>
 
 void output_frame(struct wl_listener *listener, void *data) {
-    /* This function is called every time an output is ready to display a frame,
-     * generally at the output's refresh rate (e.g. 60Hz). */
     struct planar_output *output = wl_container_of(listener, output, frame);
     struct planar_server *server = output->server;
     struct wlr_scene *scene = server->scene;
     struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(
         scene, output->wlr_output);
 
-    // Apply the global offset to the scene output
+    // Only apply global offset to windows in the active workspace
+    struct planar_workspace *active_workspace = server->active_workspace;
     struct planar_toplevel *toplevel;
     wl_list_for_each(toplevel, &server->toplevels, link) {
-        // Adjust the position by global_offset
-        wlr_scene_node_set_position(&toplevel->scene_tree->node,
-                                    toplevel->scene_tree->node.x + round(server->global_offset.x),
-                                    toplevel->scene_tree->node.y + round(server->global_offset.y));
+        if (toplevel->workspace == active_workspace) {
+            wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+            wlr_scene_node_set_position(&toplevel->scene_tree->node,
+                                    toplevel->scene_tree->node.x + round(active_workspace->global_offset.x),
+                                    toplevel->scene_tree->node.y + round(active_workspace->global_offset.y));
+        }
+        else if (toplevel->workspace != active_workspace) {
+            wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
+        }
     }
 
+    // Arrange and render layer surfaces
     arrange_layers(output);
 
     /* Render the scene if needed and commit the output */
@@ -34,12 +39,14 @@ void output_frame(struct wl_listener *listener, void *data) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
 
-        wl_list_for_each(toplevel, &server->toplevels, link) {
-    // Reset the position back to original
-    wlr_scene_node_set_position(&toplevel->scene_tree->node,
-                                toplevel->scene_tree->node.x - round(server->global_offset.x),
-                                toplevel->scene_tree->node.y - round(server->global_offset.y));
-}
+    // Reset positions only for active workspace windows
+    wl_list_for_each(toplevel, &server->toplevels, link) {
+        if (toplevel->workspace == active_workspace) {
+        wlr_scene_node_set_position(&toplevel->scene_tree->node,
+                                toplevel->scene_tree->node.x - round(active_workspace->global_offset.x),
+                                toplevel->scene_tree->node.y - round(active_workspace->global_offset.y));
+    }
+    }
 
     wlr_scene_output_send_frame_done(scene_output, &now);
 }

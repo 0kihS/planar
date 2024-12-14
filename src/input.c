@@ -1,6 +1,9 @@
 #include "input.h"
 #include "cursor.h"
 #include "output.h"
+#include "workspaces.h"
+#include "config.h"
+
 #include <stdlib.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_input_device.h>
@@ -12,18 +15,19 @@
 int keyboard_repeat_func(void *data) {
     struct planar_server *server = data;
     float move_step = 10.0f;
+    struct planar_workspace *workspace = server->active_workspace;
 
     if (server->key_state.left_pressed) {
-        server->global_offset.x += move_step;
+        workspace->global_offset.x += move_step;
     }
     if (server->key_state.right_pressed) {
-        server->global_offset.x -= move_step;
+        workspace->global_offset.x -= move_step;
     }
     if (server->key_state.up_pressed) {
-        server->global_offset.y += move_step;
+        workspace->global_offset.y += move_step;
     }
     if (server->key_state.down_pressed) {
-        server->global_offset.y -= move_step;
+        workspace->global_offset.y -= move_step;
     }
 
     if (server->key_state.left_pressed || server->key_state.right_pressed ||
@@ -60,23 +64,22 @@ static void keyboard_handle_modifiers(
 }
 
 static bool handle_keybinding(struct planar_server *server, xkb_keysym_t sym) {
-	/*
-	 * Here we handle compositor keybindings. This is when the compositor is
-	 * processing keys, rather than passing them on to the client for its own
-	 * processing.
-	 *
-	 * This function assumes Alt is held down.
-	 */
-	float move_step = 10.0f;
-	switch (sym) {
-	case XKB_KEY_Escape:
-		wl_display_terminate(server->wl_display);
-		break;
-	case XKB_KEY_F1:
-		/* Cycle to the next toplevel */
-		if (wl_list_length(&server->toplevels) < 2) {
-			break;
-		}
+    // struct wlr_xdg_toplevel *focused_toplevel = wlr_xdg_toplevel_try_from_wlr_surface(server->seat->pointer_state.focused_surface);
+    float move_step = 10.0f;
+    uint32_t modifiers = wlr_keyboard_get_modifiers(wlr_seat_get_keyboard(server->seat));
+    if (handle_keybinding_from_config(server, modifiers, sym)) {
+        return true;
+    }
+    switch (sym) {
+        case XKB_KEY_Escape:
+            wl_display_terminate(server->wl_display);
+            break;
+            case XKB_KEY_F1:
+        /* Cycle to the next toplevel */
+            if (wl_list_length(&server->toplevels) < 2) {
+                break;
+            }
+            break;
         case XKB_KEY_Left:
             server->key_state.left_pressed = true;
             break;
@@ -89,9 +92,35 @@ static bool handle_keybinding(struct planar_server *server, xkb_keysym_t sym) {
         case XKB_KEY_Down:
             server->key_state.down_pressed = true;
             break;
-            // Add more cases for additional navigation keys if needed
+    // New workspace navigation keybindings
+    case XKB_KEY_1: case XKB_KEY_2: case XKB_KEY_3:
+    case XKB_KEY_4: case XKB_KEY_5: case XKB_KEY_6:
+    case XKB_KEY_7: case XKB_KEY_8: case XKB_KEY_9:
+        {
+            int workspace_index = sym - XKB_KEY_1;
+            switch_to_workspace(server, workspace_index);
         }
-	}
+        break;
+    /* case XKB_KEY_0:
+        // Move focused window to the next workspace
+        if (focused_toplevel) {
+            int next_index = (server->active_workspace->index + 1) % WORKSPACE_COUNT;
+            struct planar_workspace *next_workspace;
+            wl_list_for_each(next_workspace, &server->workspaces, link) {
+                if (next_workspace->index == next_index) {
+                    move_toplevel_to_workspace(focused_toplevel, next_workspace);
+                    switch_to_workspace(server, next_index);
+                    break;
+                }
+            }
+        }
+        break;
+        */
+    default:
+        return false;
+    }
+    return true;
+}
 
 static void keyboard_handle_key(
 		struct wl_listener *listener, void *data) {

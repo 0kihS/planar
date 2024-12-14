@@ -43,6 +43,11 @@ struct planar_server {
 	struct wlr_scene_tree *layers[4];
     struct wl_listener new_layer_shell_surface;
 
+    struct wl_list workspaces;
+    struct planar_workspace *active_workspace;
+
+    struct config *config;
+
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
 	struct wl_listener cursor_motion;
@@ -70,11 +75,6 @@ struct planar_server {
 	double grab_x, grab_y;
 	struct wlr_box grab_geobox;
 	uint32_t resize_edges;
-
-    struct {
-        double x;
-        double y;
-    } global_offset;
 
 	struct wlr_output_layout *output_layout;
 	struct wl_list outputs;

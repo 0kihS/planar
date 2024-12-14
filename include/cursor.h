@@ -2,7 +2,6 @@
 #define PLANAR_CURSOR_H
 
 #include "server.h"
-#include <wayland-server-core.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 

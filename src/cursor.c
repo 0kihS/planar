@@ -185,8 +185,8 @@ static void server_cursor_motion(struct wl_listener *listener, void *data) {
 			event->delta_x, event->delta_y);
 	if (server->cursor_mode == PLANAR_CURSOR_PANNING) {
         // Update global offset based on cursor movement
-        server->global_offset.x += event->delta_x;
-        server->global_offset.y += event->delta_y;
+        server->active_workspace->global_offset.x += event->delta_x;
+        server->active_workspace->global_offset.y += event->delta_y;
 
         // Request a new frame to be rendered with the updated offset
 		struct wlr_output *output = wlr_output_layout_output_at(

@@ -1,6 +1,8 @@
 #include "toplevel.h"
 #include "server.h"
 #include "cursor.h"
+#include "workspaces.h"
+
 #include <stdlib.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -110,12 +112,17 @@ void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     struct wlr_xdg_toplevel *xdg_toplevel = data;
     struct wlr_scene_tree *layer_tree = server->layers[1];
     struct planar_toplevel *toplevel = calloc(1, sizeof(*toplevel));
+    struct planar_workspace *workspace = server->active_workspace;
 
     toplevel->server = server;
     toplevel->xdg_toplevel = xdg_toplevel;
     toplevel->scene_tree = wlr_scene_xdg_surface_create(layer_tree, xdg_toplevel->base);
     toplevel->scene_tree->node.data = toplevel;
     xdg_toplevel->base->data = toplevel->scene_tree;
+    toplevel->workspace = workspace;
+    wl_list_insert(&workspace->toplevels, &toplevel->link);
+
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
 
     toplevel->map.notify = xdg_toplevel_map;
     wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);
@@ -168,7 +175,7 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
 }
 
 struct planar_toplevel *desktop_toplevel_at(struct planar_server *server, double lx, double ly,
-                                            struct wlr_surface **surface, double *sx, double *sy) { 
+                                            struct wlr_surface **surface, double *sx, double *sy) {
     struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node, lx, ly, sx, sy);
     if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
         return NULL;
