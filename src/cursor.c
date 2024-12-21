@@ -230,33 +230,40 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
 
     wlr_seat_pointer_notify_button(server->seat,
             event->time_msec, event->button, event->state);
-    double sx, sy;
-    struct wlr_surface *surface = NULL;
-    struct planar_toplevel *toplevel = desktop_toplevel_at(server,
-            server->cursor->x, server->cursor->y, &surface, &sx, &sy);
-	struct planar_layer_surface *layer_surface = layer_surface_at(server,
-            server->cursor->x, server->cursor->y, &surface, &sx, &sy);
-
-
-    if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
-        if (event->button == BTN_MIDDLE) {
-			server->cursor_mode = PLANAR_CURSOR_PANNING;
-		}
-	}
-    if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         // Reset the cursor mode when any button is released
         reset_cursor_mode(server);
-    } else {
-        // Focus that client if the button was _pressed_
-		if (toplevel) {
-			if (toplevel->server) {
-        		focus_toplevel(toplevel, surface);
-			}
-		}
-		else if (layer_surface) {
-			focus_layer_surface(layer_surface, surface);
-		}
+		return;
     }
+
+	if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        if (event->button == BTN_MIDDLE) {
+			server->cursor_mode = PLANAR_CURSOR_PANNING;
+			return;
+		}
+	}
+
+	double cx = server->cursor->x;
+	double cy = server->cursor->y;
+    double sx, sy;
+    struct wlr_surface *surface = NULL;
+	struct planar_layer_surface *layer_surface = layer_surface_at(server,
+            cx, cy, &surface, &sx, &sy);
+
+	if (layer_surface) {
+			focus_layer_surface(layer_surface, surface);
+			return;
+	}
+
+	convert_global_coords_to_scene(server, &cx, &cy);
+    struct planar_toplevel *toplevel = desktop_toplevel_at(server,
+            cx, cy, &surface, &sx, &sy);
+	
+	if (toplevel) {
+		if (toplevel->server) {
+        	focus_toplevel(toplevel, surface);
+		}
+	}
 }
 
 static void server_cursor_axis(struct wl_listener *listener, void *data) {

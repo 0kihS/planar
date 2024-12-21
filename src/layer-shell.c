@@ -195,11 +195,28 @@ struct planar_layer_surface *layer_surface_at(struct planar_server *server, doub
 
     *surface = scene_surface->surface;
 
+    // Walk up the scene tree to find the first node with data
     struct wlr_scene_tree *tree = node->parent;
     while (tree != NULL && tree->node.data == NULL) {
         tree = tree->node.parent;
     }
-    return tree->node.data;
+    
+    // If we found no tree with data, or if the data isn't a layer surface, return NULL
+    if (tree == NULL || !tree->node.data) {
+        return NULL;
+    }
+    
+    // Check if this is actually a layer surface by verifying it's in one of our layer trees
+    struct planar_layer_surface *layer_surface = tree->node.data;
+    struct wlr_scene_tree *parent = tree;
+    while (parent != NULL) {
+            if (parent == server->layers[0] || parent == server->layers[3]) {
+                return layer_surface;  // It's in a layer tree, so it's a layer surface
+            }
+        parent = parent->node.parent;
+    }
+    
+    return NULL;  // Not in any layer tree, so not a layer surface
 }
 
 void focus_layer_surface(struct planar_layer_surface *layer_surface, struct wlr_surface *surface) {
