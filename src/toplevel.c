@@ -123,6 +123,8 @@ void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
 
+    wlr_scene_node_set_position(&toplevel->scene_tree->node, round(workspace->global_offset.x * -1), round(workspace->global_offset.y * -1));
+
     toplevel->map.notify = xdg_toplevel_map;
     wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);
     toplevel->unmap.notify = xdg_toplevel_unmap;
