@@ -2,27 +2,15 @@
 #include <stdlib.h>
 #include <wlr/util/log.h>
 #include <unistd.h>
+#include <signal.h>
 
-int main(int argc, char *argv[]) {
+static void handle_signal(int signo) {
+    struct planar_server server;
+    server_finish(&server);
+}
+
+int main(void) {
     wlr_log_init(WLR_DEBUG, NULL);
-
-    char *startup_cmd = NULL;
-
-	int c;
-	while ((c = getopt(argc, argv, "s:h")) != -1) {
-		switch (c) {
-		case 's':
-			startup_cmd = optarg;
-			break;
-		default:
-			printf("Usage: %s [-s startup command]\n", argv[0]);
-			return 0;
-		}
-	}
-	if (optind < argc) {
-		printf("Usage: %s [-s startup command]\n", argv[0]);
-		return 0;
-	}
 
     struct planar_server server = {0};
     server_init(&server);
@@ -32,9 +20,8 @@ int main(int argc, char *argv[]) {
     wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s", server.socket);
     wlr_log(WLR_INFO, "WAYLAND_DISPLAY set to %s", getenv("WAYLAND_DISPLAY"));
 
-    if (fork() == 0) {
-        execl("/bin/sh", "/bin/sh", "-c", startup_cmd, (void *)NULL);
-    }
+    signal(SIGINT, handle_signal);
+    signal(SIGTERM, handle_signal);
 
     server_run(&server);
     server_finish(&server);

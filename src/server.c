@@ -185,16 +185,30 @@ void server_run(struct planar_server *server) {
 }
 
 void server_finish(struct planar_server *server) {
-    if (server->config) {
-            config_destroy(server->config);
-        }
     wl_display_destroy_clients(server->wl_display);
+    wl_list_remove(&server->new_input.link);
+    wl_list_remove(&server->new_output.link);
+    wl_list_remove(&server->new_xdg_toplevel.link);
+    wl_list_remove(&server->new_xdg_popup.link);
+    wl_list_remove(&server->new_layer_shell_surface.link);
+    struct planar_workspace *workspace, *tmp_ws;
+    wl_list_for_each_safe(workspace, tmp_ws, &server->workspaces, link) {
+        wl_list_remove(&workspace->link);
+        free(workspace);
+    }
+    if (server->keyboard_repeat_source) {
+        wl_event_source_remove(server->keyboard_repeat_source);
+    }
+    if (server->config) {
+        config_destroy(server->config);
+    }
+    seat_finish(server);
     wlr_scene_node_destroy(&server->scene->tree.node);
     wlr_xcursor_manager_destroy(server->cursor_mgr);
     wlr_cursor_destroy(server->cursor);
+    wlr_output_layout_destroy(server->output_layout);
     wlr_allocator_destroy(server->allocator);
     wlr_renderer_destroy(server->renderer);
     wlr_backend_destroy(server->backend);
     wl_display_destroy(server->wl_display);
-    seat_finish(server);
 }
