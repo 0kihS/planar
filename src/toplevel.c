@@ -46,7 +46,6 @@ static void begin_interactive(struct planar_toplevel *toplevel,
 
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, map);
-    wl_list_insert(&toplevel->server->toplevels, &toplevel->link);
     focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
 }
 
@@ -164,7 +163,7 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
 
     wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
     wl_list_remove(&toplevel->link);
-    wl_list_insert(&server->toplevels, &toplevel->link);
+    wl_list_insert(&toplevel->workspace->toplevels, &toplevel->link);
 
     wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
 
@@ -172,25 +171,4 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
         wlr_seat_keyboard_notify_enter(seat, toplevel->xdg_toplevel->base->surface,
                                        keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
     }
-}
-
-struct planar_toplevel *desktop_toplevel_at(struct planar_server *server, double lx, double ly,
-                                            struct wlr_surface **surface, double *sx, double *sy) {
-    struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node, lx, ly, sx, sy);
-    if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
-        return NULL;
-    }
-    struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
-    struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
-    if (!scene_surface) {
-        return NULL;
-    }
-
-    *surface = scene_surface->surface;
-
-    struct wlr_scene_tree *tree = node->parent;
-    while (tree != NULL && tree->node.data == NULL) {
-        tree = tree->node.parent;
-    }
-    return tree->node.data;
 }

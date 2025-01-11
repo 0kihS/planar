@@ -111,7 +111,6 @@ void server_init(struct planar_server *server) {
     server->new_layer_shell_surface.notify = server_layer_shell_surface;
     wl_signal_add(&server->layer_shell->events.new_surface, &server->new_layer_shell_surface);
 
-    wl_list_init(&server->toplevels);
     server->new_xdg_toplevel.notify = server_new_xdg_toplevel;
     wl_signal_add(&server->xdg_shell->events.new_toplevel, &server->new_xdg_toplevel);
 

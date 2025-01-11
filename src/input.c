@@ -74,12 +74,6 @@ static bool handle_keybinding(struct planar_server *server, xkb_keysym_t sym) {
         case XKB_KEY_Escape:
             wl_display_terminate(server->wl_display);
             break;
-            case XKB_KEY_F1:
-        /* Cycle to the next toplevel */
-            if (wl_list_length(&server->toplevels) < 2) {
-                break;
-            }
-            break;
         case XKB_KEY_Left:
             server->key_state.left_pressed = true;
             break;
