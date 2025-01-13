@@ -293,3 +293,7 @@ void reset_cursor_mode(struct planar_server *server) {
     server->cursor_mode = PLANAR_CURSOR_PASSTHROUGH;
     server->grabbed_toplevel = NULL;
 }
+
+void server_new_pointer(struct planar_server *server, struct wlr_input_device *device) {
+    wlr_cursor_attach_input_device(server->cursor, device);
+}

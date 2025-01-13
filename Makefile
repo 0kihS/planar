@@ -8,7 +8,7 @@ WAYLAND_PROTOCOLS != $(PKG_CONFIG) --variable=pkgdatadir wayland-protocols
 WAYLAND_SCANNER != $(PKG_CONFIG) --variable=wayland_scanner wayland-scanner
 
 # Packages and flags
-PKGS = wlroots-0.19 wayland-server xkbcommon json-c
+PKGS = wlroots-0.19 wayland-server xkbcommon
 CFLAGS_PKG_CONFIG!=$(PKG_CONFIG) --cflags $(PKGS)
 CFLAGS+=$(CFLAGS_PKG_CONFIG)
 LIBS!=$(PKG_CONFIG) --libs $(PKGS)

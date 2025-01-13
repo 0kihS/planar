@@ -5,6 +5,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 
+void server_new_pointer(struct planar_server *server, struct wlr_input_device *device);
 void cursor_init(struct planar_server *server);
 void cursor_destroy(struct planar_server *server);
 

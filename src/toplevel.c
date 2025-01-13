@@ -174,3 +174,13 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
                                        keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
     }
 }
+
+void kill_active_toplevel(struct planar_server *server) {
+    struct planar_toplevel *toplevel;
+    wl_list_for_each_reverse(toplevel, &server->active_workspace->toplevels, link) {
+        if (toplevel->xdg_toplevel->base->surface == server->seat->keyboard_state.focused_surface) {
+            wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
+            return;
+        }
+    }
+}

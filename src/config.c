@@ -1,44 +1,94 @@
 #include "config.h"
-#include <json-c/json.h>
+#include "toml.h"
+#include "workspaces.h"
+#include "toplevel.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <wlr/util/log.h>
-#include <unistd.h>
 
 static uint32_t parse_modifiers(const char *mod_str) {
     uint32_t mods = 0;
-    if (strstr(mod_str, "shift")) mods |= WLR_MODIFIER_SHIFT;
-    if (strstr(mod_str, "caps")) mods |= WLR_MODIFIER_CAPS;
-    if (strstr(mod_str, "ctrl")) mods |= WLR_MODIFIER_CTRL;
-    if (strstr(mod_str, "alt")) mods |= WLR_MODIFIER_ALT;
-    if (strstr(mod_str, "mod2")) mods |= WLR_MODIFIER_MOD2;
-    if (strstr(mod_str, "mod3")) mods |= WLR_MODIFIER_MOD3;
-    if (strstr(mod_str, "logo")) mods |= WLR_MODIFIER_LOGO;
-    if (strstr(mod_str, "mod5")) mods |= WLR_MODIFIER_MOD5;
+    char *str = strdup(mod_str);
+    char *token = strtok(str, "+");
+
+    while (token) {
+        char *trimmed = token;
+        while (isspace(*trimmed)) trimmed++;
+
+        if (strcasecmp(trimmed, "shift") == 0) mods |= WLR_MODIFIER_SHIFT;
+        else if (strcasecmp(trimmed, "caps") == 0) mods |= WLR_MODIFIER_CAPS;
+        else if (strcasecmp(trimmed, "ctrl") == 0) mods |= WLR_MODIFIER_CTRL;
+        else if (strcasecmp(trimmed, "alt") == 0) mods |= WLR_MODIFIER_ALT;
+        else if (strcasecmp(trimmed, "mod2") == 0) mods |= WLR_MODIFIER_MOD2;
+        else if (strcasecmp(trimmed, "mod3") == 0) mods |= WLR_MODIFIER_MOD3;
+        else if (strcasecmp(trimmed, "super") == 0 || strcasecmp(trimmed, "logo") == 0)
+            mods |= WLR_MODIFIER_LOGO;
+        else if (strcasecmp(trimmed, "mod5") == 0) mods |= WLR_MODIFIER_MOD5;
+
+        token = strtok(NULL, "+");
+    }
+
+    free(str);
     return mods;
 }
 
 static xkb_keysym_t parse_key(const char *key_str) {
-    // Convert key string to uppercase for consistency
-    char *upper_key = strdup(key_str);
-    for (int i = 0; upper_key[i]; i++) {
-        upper_key[i] = toupper(upper_key[i]);
-    }
-
-    // Add XKB_KEY_ prefix
-    char xkb_key[64] = "XKB_KEY_";
-    strcat(xkb_key, upper_key);
-    free(upper_key);
-
-    // Get keysym from string
-    xkb_keysym_t sym = xkb_keysym_from_name(xkb_key, XKB_KEYSYM_CASE_INSENSITIVE);
+    xkb_keysym_t sym = xkb_keysym_from_name(key_str, XKB_KEYSYM_CASE_INSENSITIVE);
     if (sym == XKB_KEY_NoSymbol) {
-        // Try without prefix
-        sym = xkb_keysym_from_name(key_str, XKB_KEYSYM_CASE_INSENSITIVE);
+        char xkb_key[64] = "XKB_KEY_";
+        strcat(xkb_key, key_str);
+        sym = xkb_keysym_from_name(xkb_key, XKB_KEYSYM_CASE_INSENSITIVE);
     }
     return sym;
+}
+
+static void parse_keybind(struct config *config, const char *key_combo, const char *command) {
+    if (config->num_keybindings >= MAX_KEYBINDINGS) {
+        wlr_log(WLR_ERROR, "Maximum number of keybindings reached");
+        return;
+    }
+
+    const char *last_plus = strrchr(key_combo, '+');
+    if (!last_plus) {
+        wlr_log(WLR_ERROR, "Invalid key binding format: %s", key_combo);
+        return;
+    }
+    
+    char *mods = strndup(key_combo, last_plus - key_combo);
+    const char *key = last_plus + 1;
+    
+    struct keybinding *bind = &config->keybindings[config->num_keybindings];
+    bind->modifiers = parse_modifiers(mods);
+    
+    struct xkb_context *ctx = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    struct xkb_rule_names rules = {0};
+    struct xkb_keymap *keymap = xkb_keymap_new_from_names(ctx, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    
+    if (keymap) {
+        struct xkb_state *state = xkb_state_new(keymap);
+        if (state) {
+            bind->key = xkb_keysym_from_name(key, XKB_KEYSYM_NO_FLAGS);
+            
+            if (bind->key == XKB_KEY_NoSymbol) {
+                char xkb_key[64] = "XKB_KEY_";
+                strcat(xkb_key, key);
+                bind->key = xkb_keysym_from_name(xkb_key, XKB_KEYSYM_NO_FLAGS);
+            }
+            
+            xkb_state_unref(state);
+        }
+        xkb_keymap_unref(keymap);
+    }
+    xkb_context_unref(ctx);
+    
+    bind->command = strdup(command);
+    bind->is_internal = (command[0] == '@');
+    
+    free(mods);
+    config->num_keybindings++;
 }
 
 struct config *config_load(const char *path) {
@@ -49,8 +99,7 @@ struct config *config_load(const char *path) {
 
     const char *config_path = path;
     char default_path[256];
-    
-    // Properly resolve the home directory
+
     if (!config_path) {
         const char *home_dir = getenv("HOME");
         if (!home_dir) {
@@ -58,53 +107,49 @@ struct config *config_load(const char *path) {
             free(config);
             return NULL;
         }
-
-        snprintf(default_path, sizeof(default_path), "%s/.config/planar/config.json", home_dir);
+        snprintf(default_path, sizeof(default_path), "%s/.config/planar/config.toml", home_dir);
         config_path = default_path;
     }
 
-    // Read and parse JSON file
-    json_object *root = json_object_from_file(config_path);
-    if (!root) {
-        wlr_log(WLR_ERROR, "Failed to load config file: %s", config_path);
+    FILE *fp = fopen(config_path, "r");
+    if (!fp) {
+        wlr_log(WLR_ERROR, "Could not open config file: %s", config_path);
         free(config);
         return NULL;
     }
 
-    // Parse startup command
-    json_object *startup_obj;
-    if (json_object_object_get_ex(root, "startup_command", &startup_obj)) {
-        const char *startup_cmd = json_object_get_string(startup_obj);
-        if (startup_cmd) {
-            config->startup_cmd = strdup(startup_cmd);
+    char errbuf[200];
+    toml_table_t *conf = toml_parse_file(fp, errbuf, sizeof(errbuf));
+    fclose(fp);
+
+    if (!conf) {
+        wlr_log(WLR_ERROR, "Error parsing TOML: %s", errbuf);
+        free(config);
+        return NULL;
+    }
+
+    toml_array_t *startup = toml_array_in(conf, "on_startup");
+    if (startup && toml_array_nelem(startup) > 0) {
+        toml_datum_t elem = toml_string_at(startup, 0);
+        if (elem.ok) {
+            config->startup_cmd = strdup(elem.u.s);
+            free(elem.u.s);
         }
     }
 
-    // Parse keybindings
-    json_object *keybindings_obj;
-    if (json_object_object_get_ex(root, "keybindings", &keybindings_obj)) {
-        int len = json_object_array_length(keybindings_obj);
-        for (int i = 0; i < len && i < MAX_KEYBINDINGS; i++) {
-            json_object *binding = json_object_array_get_idx(keybindings_obj, i);
-
-            json_object *modifiers_obj, *key_obj, *command_obj;
-            if (json_object_object_get_ex(binding, "modifiers", &modifiers_obj) &&
-                json_object_object_get_ex(binding, "key", &key_obj) &&
-                json_object_object_get_ex(binding, "command", &command_obj)) {
-
-                const char *mod_str = json_object_get_string(modifiers_obj);
-                const char *key_str = json_object_get_string(key_obj);
-                const char *cmd_str = json_object_get_string(command_obj);
-
-                config->keybindings[config->num_keybindings].modifiers = parse_modifiers(mod_str);
-                config->keybindings[config->num_keybindings].key = parse_key(key_str);
-                config->keybindings[config->num_keybindings].command = strdup(cmd_str);
-                config->num_keybindings++;
+    toml_table_t *keybinds = toml_table_in(conf, "keybinds");
+    if (keybinds) {
+        const char *key;
+        for (int i = 0; 0 != (key = toml_key_in(keybinds, i)); i++) {
+            toml_datum_t val = toml_string_in(keybinds, key);
+            if (val.ok) {
+                parse_keybind(config, key, val.u.s);
+                free(val.u.s);
             }
         }
     }
 
-    json_object_put(root);
+    toml_free(conf);
     return config;
 }
 
@@ -116,20 +161,4 @@ void config_destroy(struct config *config) {
         free(config->keybindings[i].command);
     }
     free(config);
-}
-
-bool handle_keybinding_from_config(struct planar_server *server, uint32_t modifiers, xkb_keysym_t sym) {
-    if (!server->config) return false;
-
-    for (int i = 0; i < server->config->num_keybindings; i++) {
-        struct keybinding *bind = &server->config->keybindings[i];
-        if (bind->modifiers == modifiers && bind->key == sym) {
-            if (fork() == 0) {
-                execl("/bin/sh", "/bin/sh", "-c", bind->command, (void *)NULL);
-                exit(0);
-            }
-            return true;
-        }
-    }
-    return false;
 }

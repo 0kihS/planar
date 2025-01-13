@@ -8,6 +8,7 @@
 #include "layers.h"
 #include "workspaces.h"
 #include "config.h"
+#include "keyboard.h"
 
 #include <unistd.h>
 #include <assert.h>
@@ -19,6 +20,7 @@
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
+#include <wlr/types/wlr_viewporter.h>
 #include <wlr/util/log.h>
 
 void convert_scene_coords_to_global(struct planar_server *server, double *x, double *y) {
@@ -97,6 +99,8 @@ void server_init(struct planar_server *server) {
 
     wlr_xdg_output_manager_v1_create(server->wl_display, server->output_layout);
 
+    wlr_viewporter_create(server->wl_display);
+
     server->scene_layout = wlr_scene_attach_output_layout(server->scene, server->output_layout);
 
     for (int i = 0; i < 4; i++) {
@@ -147,10 +151,6 @@ void server_init(struct planar_server *server) {
     wl_list_init(&server->keyboards);
     server->new_input.notify = server_new_input;
     wl_signal_add(&server->backend->events.new_input, &server->new_input);
-
-    server->keyboard_repeat_source = wl_event_loop_add_timer(
-        wl_display_get_event_loop(server->wl_display),
-        keyboard_repeat_func, server);
 
     seat_init(server);
 

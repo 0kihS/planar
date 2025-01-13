@@ -21,6 +21,8 @@ struct planar_workspace {
 };
 
 void switch_to_workspace(struct planar_server *server, int index);
-void move_toplevel_to_workspace(struct planar_toplevel *toplevel, struct planar_workspace *new_workspace);
+void active_toplevel_to_workspace(struct planar_server *server, int index);
+void update_workspace_offset(struct planar_server *server, int offset_x, int offset_y);
+void set_workspace_offset(struct planar_server *server, int offset_x, int offset_y);
 
 #endif

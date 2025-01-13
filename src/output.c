@@ -20,7 +20,6 @@ void output_frame(struct wl_listener *listener, void *data) {
     struct planar_toplevel *toplevel;
     // Update this to use workspace toplevels
     wl_list_for_each(toplevel, &active_workspace->toplevels, link) {
-        wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
         wlr_scene_node_set_position(&toplevel->scene_tree->node,
                                 toplevel->scene_tree->node.x + round(active_workspace->global_offset.x),
                                 toplevel->scene_tree->node.y + round(active_workspace->global_offset.y));
