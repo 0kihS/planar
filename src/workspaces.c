@@ -42,6 +42,7 @@ void switch_to_workspace(struct planar_server *server, int index) {
     // Update focus
 
     wl_list_for_each_reverse(toplevel, &server->active_workspace->toplevels, link) {
+        wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
         focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
         break;
     }

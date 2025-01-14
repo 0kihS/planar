@@ -46,6 +46,7 @@ static void begin_interactive(struct planar_toplevel *toplevel,
 
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, map);
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
     focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
 }
 
