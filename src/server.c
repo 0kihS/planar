@@ -22,6 +22,7 @@
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/util/log.h>
 
 void convert_scene_coords_to_global(struct planar_server *server, double *x, double *y) {
@@ -32,6 +33,12 @@ void convert_scene_coords_to_global(struct planar_server *server, double *x, dou
 void convert_global_coords_to_scene(struct planar_server *server, double *x, double *y) {
     *x -= server->active_workspace->global_offset.x;
     *y -= server->active_workspace->global_offset.y;
+}
+
+static void server_new_toplevel_decoration(struct wl_listener *listener, void *data) {
+    struct planar_server *server = wl_container_of(listener, server, new_toplevel_decoration);
+    struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
+    wlr_xdg_toplevel_decoration_v1_set_mode(decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
 static void server_new_input(struct wl_listener *listener, void *data) {
@@ -110,6 +117,11 @@ void server_init(struct planar_server *server) {
 
     server->xdg_shell = wlr_xdg_shell_create(server->wl_display, 3);
     assert(server->xdg_shell);
+
+    server->xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server->wl_display);
+
+    server->new_toplevel_decoration.notify = server_new_toplevel_decoration;
+    wl_signal_add(&server->xdg_decoration_manager->events.new_toplevel_decoration, &server->new_toplevel_decoration);
 
     server->layer_shell = wlr_layer_shell_v1_create(server->wl_display, 4);
 

@@ -40,6 +40,9 @@ struct planar_server {
 	struct wl_listener new_xdg_popup;
 	struct wl_list toplevels;
 
+	struct wlr_xdg_decoration_manager_v1 *xdg_decoration_manager;
+	struct wl_listener new_toplevel_decoration;
+
 	struct wlr_scene_tree *layers[4];
     struct wl_listener new_layer_shell_surface;
 
