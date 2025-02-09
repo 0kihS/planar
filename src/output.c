@@ -15,16 +15,6 @@ void output_frame(struct wl_listener *listener, void *data) {
     struct wlr_scene_output *scene_output = wlr_scene_get_scene_output(
         scene, output->wlr_output);
 
-    // Only apply global offset to windows in the active workspace
-    struct planar_workspace *active_workspace = server->active_workspace;
-    struct planar_toplevel *toplevel;
-    // Update this to use workspace toplevels
-    wl_list_for_each(toplevel, &active_workspace->toplevels, link) {
-        wlr_scene_node_set_position(&toplevel->scene_tree->node,
-                                toplevel->scene_tree->node.x + round(active_workspace->global_offset.x),
-                                toplevel->scene_tree->node.y + round(active_workspace->global_offset.y));
-    }
-
     // Arrange and render layer surfaces
     arrange_layers(output);
 
@@ -32,13 +22,6 @@ void output_frame(struct wl_listener *listener, void *data) {
 
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-
-    // Reset positions only for active workspace windows
-    wl_list_for_each(toplevel, &active_workspace->toplevels, link) {
-        wlr_scene_node_set_position(&toplevel->scene_tree->node,
-                                toplevel->scene_tree->node.x - round(active_workspace->global_offset.x),
-                                toplevel->scene_tree->node.y - round(active_workspace->global_offset.y));
-    }
 
     wlr_scene_output_send_frame_done(scene_output, &now);
 }

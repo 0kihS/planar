@@ -5,9 +5,23 @@
 
 void set_workspace_offset(struct planar_server *server, int offset_x, int offset_y) {
     struct planar_workspace *active_workspace = server->active_workspace;
-    active_workspace->global_offset.x = -(offset_x);
-    active_workspace->global_offset.y = -(offset_y);
+    
+    // Calculate the change in offset
+    double dx = offset_x - active_workspace->global_offset.x;
+    double dy = offset_y - active_workspace->global_offset.y;
+    
+    // Update the stored offset
+    active_workspace->global_offset.x = offset_x;
+    active_workspace->global_offset.y = offset_y;
 
+    // Move all windows in the workspace
+    struct planar_toplevel *toplevel;
+    wl_list_for_each(toplevel, &active_workspace->toplevels, link) {
+        struct wlr_scene_node *node = &toplevel->scene_tree->node;
+        wlr_scene_node_set_position(node, node->x + dx, node->y + dy);
+    }
+
+    // Request a frame to render the changes
     struct planar_output *output;
     wl_list_for_each(output, &server->outputs, link) {
         wlr_output_schedule_frame(output->wlr_output);
@@ -16,9 +30,21 @@ void set_workspace_offset(struct planar_server *server, int offset_x, int offset
 
 void update_workspace_offset(struct planar_server *server, int offset_x, int offset_y) {
     struct planar_workspace *active_workspace = server->active_workspace;
-    active_workspace->global_offset.x -= offset_x;
-    active_workspace->global_offset.y -= offset_y;
+    
+    // Move all windows in the workspace
+    struct planar_toplevel *toplevel;
+    wl_list_for_each(toplevel, &active_workspace->toplevels, link) {
+        struct wlr_scene_node *node = &toplevel->scene_tree->node;
+        wlr_scene_node_set_position(node, 
+            node->x + offset_x,
+            node->y + offset_y);
+    }
 
+    // Update the stored offset
+    active_workspace->global_offset.x += offset_x;
+    active_workspace->global_offset.y += offset_y;
+
+    // Request a frame to render the changes
     struct planar_output *output;
     wl_list_for_each(output, &server->outputs, link) {
         wlr_output_schedule_frame(output->wlr_output);

@@ -8,6 +8,7 @@
 #include "server.h"
 #include "workspaces.h"
 #include "toplevel.h"
+#include "cursor.h"
 
 static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
     struct planar_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
@@ -86,6 +87,15 @@ static void keyboard_handle_key(struct wl_listener *listener, void *data) {
     struct wlr_keyboard *wlr_keyboard = keyboard->wlr_keyboard;
     uint32_t keycode = event->keycode + 8;
     xkb_keysym_t sym = xkb_state_key_get_one_sym(wlr_keyboard->xkb_state, keycode);
+
+    if (sym == XKB_KEY_Alt_L || sym == XKB_KEY_Alt_R) {  // We'll use Alt as the drag key
+        if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+            server->cursor_mode = PLANAR_CURSOR_DRAG_PENDING;
+        } else {
+            reset_cursor_mode(server);
+        }
+        return;
+    }
 
     bool handled = false;
     if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {

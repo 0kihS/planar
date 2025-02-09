@@ -24,6 +24,7 @@ enum planar_cursor_mode {
     PLANAR_CURSOR_MOVE,
     PLANAR_CURSOR_RESIZE,
     PLANAR_CURSOR_PANNING,
+	PLANAR_CURSOR_DRAG_PENDING,
 };
 
 struct planar_server {
@@ -76,6 +77,7 @@ struct planar_server {
 	enum planar_cursor_mode cursor_mode;
 	struct planar_toplevel *grabbed_toplevel;
 	double grab_x, grab_y;
+	double grab_workspace_x, grab_workspace_y;
 	struct wlr_box grab_geobox;
 	uint32_t resize_edges;
 

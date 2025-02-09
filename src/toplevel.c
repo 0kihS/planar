@@ -96,6 +96,7 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
+
     wl_list_remove(&toplevel->map.link);
     wl_list_remove(&toplevel->unmap.link);
     wl_list_remove(&toplevel->commit.link);
@@ -116,15 +117,14 @@ void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 
     toplevel->server = server;
     toplevel->xdg_toplevel = xdg_toplevel;
-    toplevel->scene_tree = wlr_scene_xdg_surface_create(layer_tree, xdg_toplevel->base);
+    struct wlr_scene_tree *container = wlr_scene_tree_create(layer_tree);
+    toplevel->scene_tree = wlr_scene_xdg_surface_create(container, xdg_toplevel->base);
     toplevel->scene_tree->node.data = toplevel;
     xdg_toplevel->base->data = toplevel->scene_tree;
     toplevel->workspace = workspace;
     wl_list_insert(&workspace->toplevels, &toplevel->link);
 
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
-
-    wlr_scene_node_set_position(&toplevel->scene_tree->node, round(workspace->global_offset.x * -1), round(workspace->global_offset.y * -1));
 
     toplevel->map.notify = xdg_toplevel_map;
     wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);
@@ -164,7 +164,19 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
     }
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
 
-    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
+    // Find the parent layer tree and raise the node within that tree
+    struct wlr_scene_tree *layer_tree = server->layers[1]; // Bottom layer where toplevels live
+    struct wlr_scene_node *node = &toplevel->scene_tree->node;
+    
+    // First move the node to the end of its parent's children list
+    wlr_scene_node_raise_to_top(node);
+    
+    // Then ensure the container is at the top of the layer tree
+    if (node->parent && node->parent != layer_tree) {
+        wlr_scene_node_raise_to_top(&node->parent->node);
+    }
+
+    // Update workspace list position
     wl_list_remove(&toplevel->link);
     wl_list_insert(&toplevel->workspace->toplevels, &toplevel->link);
 

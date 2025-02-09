@@ -92,9 +92,6 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
         return;
     }
 
-    /* If no layer surface was found, apply the offset and check for regular windows */
-    convert_global_coords_to_scene(server, &cx, &cy);
-
     struct planar_toplevel *toplevel = desktop_toplevel_at(server,
             cx, cy, &surface, &sx, &sy);
 
@@ -171,38 +168,28 @@ void process_cursor_resize(struct planar_server *server, uint32_t time) {
 }
 
 static void server_cursor_motion(struct wl_listener *listener, void *data) {
-	/* This event is forwarded by the cursor when a pointer emits a _relative_
-	 * pointer motion event (i.e. a delta) */
-	struct planar_server *server =
-		wl_container_of(listener, server, cursor_motion);
-	struct wlr_pointer_motion_event *event = data;
-	/* The cursor doesn't move unless we tell it to. The cursor automatically
-	 * handles constraining the motion to the output layout, as well as any
-	 * special configuration applied for the specific input device which
-	 * generated the event. You can pass NULL for the device if you want to move
-	 * the cursor around without any input. */
-	wlr_cursor_move(server->cursor, &event->pointer->base,
-			event->delta_x, event->delta_y);
-	if (server->cursor_mode == PLANAR_CURSOR_PANNING) {
-        // Update global offset based on cursor movement
-        server->active_workspace->global_offset.x += event->delta_x;
-        server->active_workspace->global_offset.y += event->delta_y;
+    struct planar_server *server =
+        wl_container_of(listener, server, cursor_motion);
+    struct wlr_pointer_motion_event *event = data;
 
-        // Request a new frame to be rendered with the updated offset
-		struct wlr_output *output = wlr_output_layout_output_at(
-        server->output_layout, server->cursor->x, server->cursor->y);
-        struct planar_output *planar_output;
-            wl_list_for_each(planar_output, &server->outputs, link) {
-                if (planar_output->wlr_output == output) {
-                    // Schedule a new frame to be rendered
-                    wlr_output_schedule_frame(output);
-                    break;
-                }
-			}
+    wlr_cursor_move(server->cursor, &event->pointer->base,
+            event->delta_x, event->delta_y);
+
+    if (server->cursor_mode == PLANAR_CURSOR_PANNING) {
+        // Calculate total offset from initial grab point
+        double dx = server->cursor->x - server->grab_x;
+        double dy = server->cursor->y - server->grab_y;
+        
+        // Set the workspace offset relative to the initial workspace position
+        set_workspace_offset(server, 
+            server->grab_workspace_x + dx,
+            server->grab_workspace_y + dy);
+        return;
     }
-	double cx = server->cursor->x;
+
+    double cx = server->cursor->x;
     double cy = server->cursor->y;
-	process_cursor_motion(server, cx, cy, event->time_msec);
+    process_cursor_motion(server, cx, cy, event->time_msec);
 }
 
 static void server_cursor_motion_absolute(
@@ -228,42 +215,75 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
         wl_container_of(listener, server, cursor_button);
     struct wlr_pointer_button_event *event = data;
 
-    wlr_seat_pointer_notify_button(server->seat,
-            event->time_msec, event->button, event->state);
-	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-        // Reset the cursor mode when any button is released
-        reset_cursor_mode(server);
-		return;
+    // Handle drag mode
+    if (server->cursor_mode == PLANAR_CURSOR_DRAG_PENDING && 
+        event->button == BTN_LEFT && 
+        event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        
+        double cx = server->cursor->x;
+        double cy = server->cursor->y;
+        double sx, sy;
+        struct wlr_surface *surface;
+        
+        struct planar_toplevel *toplevel = desktop_toplevel_at(server,
+                cx, cy, &surface, &sx, &sy);
+        
+        if (toplevel) {
+            // Start the drag operation
+            server->cursor_mode = PLANAR_CURSOR_MOVE;
+            server->grabbed_toplevel = toplevel;
+            server->grab_x = cx - toplevel->scene_tree->node.x;
+            server->grab_y = cy - toplevel->scene_tree->node.y;
+            return;
+        }
     }
 
-	if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
-        if (event->button == BTN_MIDDLE) {
-			server->cursor_mode = PLANAR_CURSOR_PANNING;
-			return;
-		}
-	}
+    // Handle button release during drag
+    if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+        if (server->cursor_mode == PLANAR_CURSOR_MOVE) {
+            server->cursor_mode = PLANAR_CURSOR_DRAG_PENDING;  // Go back to pending mode
+        }
+        // Don't reset cursor mode here as the key might still be held
+    }
 
-	double cx = server->cursor->x;
-	double cy = server->cursor->y;
+    wlr_seat_pointer_notify_button(server->seat,
+            event->time_msec, event->button, event->state);
+    if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+        // Reset the cursor mode when any button is released
+        reset_cursor_mode(server);
+        return;
+    }
+
+    if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        if (event->button == BTN_MIDDLE) {
+            server->cursor_mode = PLANAR_CURSOR_PANNING;
+            // Store initial cursor position and workspace offset for panning
+            server->grab_x = server->cursor->x;
+            server->grab_y = server->cursor->y;
+            server->grab_workspace_x = server->active_workspace->global_offset.x;
+            server->grab_workspace_y = server->active_workspace->global_offset.y;
+            return;
+        }
+    }
+
+    double cx = server->cursor->x;
+    double cy = server->cursor->y;
     double sx, sy;
     struct wlr_surface *surface = NULL;
-	struct planar_layer_surface *layer_surface = layer_surface_at(server,
+    struct planar_layer_surface *layer_surface = layer_surface_at(server,
             cx, cy, &surface, &sx, &sy);
 
-	if (layer_surface) {
-			focus_layer_surface(layer_surface, surface);
-			return;
-	}
+    if (layer_surface) {
+        focus_layer_surface(layer_surface, surface);
+        return;
+    }
 
-	convert_global_coords_to_scene(server, &cx, &cy);
     struct planar_toplevel *toplevel = desktop_toplevel_at(server,
             cx, cy, &surface, &sx, &sy);
-	
-	if (toplevel) {
-		if (toplevel->server) {
-        	focus_toplevel(toplevel, surface);
-		}
-	}
+    
+    if (toplevel) {
+        focus_toplevel(toplevel, surface);
+    }
 }
 
 static void server_cursor_axis(struct wl_listener *listener, void *data) {
@@ -290,6 +310,14 @@ static void server_cursor_frame(struct wl_listener *listener, void *data) {
 }
 
 void reset_cursor_mode(struct planar_server *server) {
+    if (server->cursor_mode == PLANAR_CURSOR_MOVE) {
+        // If we were moving a window, make sure to focus it
+        if (server->grabbed_toplevel) {
+            focus_toplevel(server->grabbed_toplevel, 
+                server->grabbed_toplevel->xdg_toplevel->base->surface);
+        }
+    }
+    
     server->cursor_mode = PLANAR_CURSOR_PASSTHROUGH;
     server->grabbed_toplevel = NULL;
 }
