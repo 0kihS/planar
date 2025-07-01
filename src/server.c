@@ -120,8 +120,8 @@ void server_init(struct planar_server *server) {
 
     server->xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server->wl_display);
 
-    server->new_toplevel_decoration.notify = server_new_toplevel_decoration;
-    wl_signal_add(&server->xdg_decoration_manager->events.new_toplevel_decoration, &server->new_toplevel_decoration);
+    //server->new_toplevel_decoration.notify = server_new_toplevel_decoration;
+    //wl_signal_add(&server->xdg_decoration_manager->events.new_toplevel_decoration, &server->new_toplevel_decoration);
 
     server->layer_shell = wlr_layer_shell_v1_create(server->wl_display, 4);
 
@@ -186,6 +186,10 @@ void server_init(struct planar_server *server) {
     server->socket = socket;
 
     switch_to_workspace(server, 0);
+
+    if (server->config->startup_cmd) {
+        handle_external_command(server->config->startup_cmd);
+    }
 }
 
 void server_run(struct planar_server *server) {

@@ -21,7 +21,5 @@ static void keyboard_handle_modifiers(struct wl_listener *listener, void *data);
 static void keyboard_handle_key(struct wl_listener *listener, void *data);
 void keyboard_handle_destroy(struct wl_listener *listener, void *data);
 void server_new_keyboard(struct planar_server *server, struct wlr_input_device *device);
-static bool handle_internal_command(struct planar_server *server, const char *cmd);
-static bool handle_external_command(const char *cmd);
 
 #endif

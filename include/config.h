@@ -24,4 +24,7 @@ struct config {
 struct config *config_load(const char *path);
 void config_destroy(struct config *config);
 
+bool handle_internal_command(struct planar_server *server, const char *cmd);
+bool handle_external_command(const char *cmd);
+
 #endif

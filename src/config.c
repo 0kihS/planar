@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>
 #include <wlr/util/log.h>
 
 static uint32_t parse_modifiers(const char *mod_str) {
@@ -161,4 +162,46 @@ void config_destroy(struct config *config) {
         free(config->keybindings[i].command);
     }
     free(config);
+}
+
+bool handle_internal_command(struct planar_server *server, const char *cmd) {
+    if (strncmp(cmd, "@workspace ", 10) == 0) {
+        int workspace = atoi(cmd + 10);
+        switch_to_workspace(server, workspace - 1);
+        return true;
+    }
+    
+    if (strcmp(cmd, "@killactive") == 0) {
+        kill_active_toplevel(server);
+        return true;
+    }
+    
+    if (strncmp(cmd, "@move_to_workspace ", 18) == 0) {
+        int workspace = atoi(cmd + 18);
+        active_toplevel_to_workspace(server, workspace - 1);
+        return true;
+    }
+    
+    if (strncmp(cmd, "@move_workspace ", 15) == 0) {
+        int offset_x, offset_y;
+        char *args;
+        strncpy(args, cmd + 15, sizeof(args) - 1);
+        args[sizeof(args) - 1] = '\0';
+
+        if (sscanf(args, "%d %d", &offset_x, &offset_y) == 2) {
+            update_workspace_offset(server, offset_x, offset_y);
+            return true;
+            }
+    
+        return false;
+    }
+
+}
+
+bool handle_external_command(const char *cmd) {
+    if (fork() == 0) {
+        execl("/bin/sh", "/bin/sh", "-c", cmd, (void *)NULL);
+        exit(0);
+    }
+    return true;
 }
