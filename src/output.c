@@ -9,6 +9,7 @@
 #include <wlr/types/wlr_scene.h>
 
 void output_frame(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_output *output = wl_container_of(listener, output, frame);
     struct planar_server *server = output->server;
     struct wlr_scene *scene = server->scene;
@@ -33,6 +34,7 @@ void output_request_state(struct wl_listener *listener, void *data) {
 }
 
 void output_destroy(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_output *output = wl_container_of(listener, output, destroy);
 
     wl_list_remove(&output->frame.link);

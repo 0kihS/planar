@@ -10,6 +10,8 @@
 #include "output.h"
 #include "popup.h"
 
+static struct wlr_scene_tree *planar_layer_get_scene(struct planar_output *output, enum zwlr_layer_shell_v1_layer type);
+
 void arrange_layers(struct planar_output *output) {
     struct wlr_box usable_area;
     wlr_output_effective_resolution(output->wlr_output, &usable_area.width, &usable_area.height);
@@ -122,6 +124,7 @@ void server_layer_shell_surface(struct wl_listener *listener, void *data) {
 }
 
 void server_layer_shell_surface_map(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_layer_surface *layer_surface = wl_container_of(listener, layer_surface, surface_map);
     if (layer_surface->layer_surface->current.keyboard_interactive) {
         focus_layer_surface(layer_surface, layer_surface->layer_surface->surface);
@@ -132,6 +135,7 @@ void server_layer_shell_surface_map(struct wl_listener *listener, void *data) {
 }
 
 void server_layer_shell_surface_unmap(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_layer_surface *layer_surface = wl_container_of(listener, layer_surface, surface_unmap);
 
     layer_surface->mapped = false;
@@ -139,6 +143,7 @@ void server_layer_shell_surface_unmap(struct wl_listener *listener, void *data) 
 }
 
 void server_layer_shell_surface_destroy(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_layer_surface *layer_surface = wl_container_of(listener, layer_surface, surface_destroy);
 
     wl_list_remove(&layer_surface->surface_map.link);
@@ -150,6 +155,7 @@ void server_layer_shell_surface_destroy(struct wl_listener *listener, void *data
 }
 
 void server_layer_shell_surface_commit(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_layer_surface *planar_layer_surface = wl_container_of(listener, planar_layer_surface, surface_commit);
     struct planar_server *server = planar_layer_surface->server;
 

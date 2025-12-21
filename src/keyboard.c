@@ -10,6 +10,7 @@
 #include "cursor.h"
 
 static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
     struct planar_server *server = keyboard->server;
     
@@ -67,6 +68,7 @@ static void keyboard_handle_key(struct wl_listener *listener, void *data) {
 }
 
 void keyboard_handle_destroy(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
     wl_list_remove(&keyboard->modifiers.link);
     wl_list_remove(&keyboard->key.link);

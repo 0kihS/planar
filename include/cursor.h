@@ -13,12 +13,6 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
 void process_cursor_move(struct planar_server *server, uint32_t time);
 void process_cursor_resize(struct planar_server *server, uint32_t time);
 
-static void server_cursor_motion(struct wl_listener *listener, void *data);
-static void server_cursor_motion_absolute(struct wl_listener *listener, void *data);
-static void server_cursor_button(struct wl_listener *listener, void *data);
-static void server_cursor_axis(struct wl_listener *listener, void *data);
-static void server_cursor_frame(struct wl_listener *listener, void *data);
-
 void reset_cursor_mode(struct planar_server *server);
 
 #endif // PLANAR_CURSOR_H

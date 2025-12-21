@@ -35,33 +35,6 @@ void convert_global_coords_to_scene(struct planar_server *server, double *x, dou
     *y -= server->active_workspace->global_offset.y;
 }
 
-static void server_new_toplevel_decoration(struct wl_listener *listener, void *data) {
-    struct planar_server *server = wl_container_of(listener, server, new_toplevel_decoration);
-    struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
-    wlr_xdg_toplevel_decoration_v1_set_mode(decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
-}
-
-static void server_new_input(struct wl_listener *listener, void *data) {
-    struct planar_server *server = wl_container_of(listener, server, new_input);
-    struct wlr_input_device *device = data;
-
-    switch (device->type) {
-    case WLR_INPUT_DEVICE_KEYBOARD:
-        server_new_keyboard(server, device);
-        break;
-    case WLR_INPUT_DEVICE_POINTER:
-        server_new_pointer(server, device);
-        break;
-    default:
-        break;
-    }
-
-    uint32_t caps = WL_SEAT_CAPABILITY_POINTER;
-    if (!wl_list_empty(&server->keyboards)) {
-        caps |= WL_SEAT_CAPABILITY_KEYBOARD;
-    }
-    wlr_seat_set_capabilities(server->seat, caps);
-}
 
 static void server_new_output(struct wl_listener *listener, void *data) {
     struct planar_server *server = wl_container_of(listener, server, new_output);

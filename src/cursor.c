@@ -9,6 +9,12 @@
 #include <string.h>
 #include <linux/input-event-codes.h>
 
+static void server_cursor_motion(struct wl_listener *listener, void *data);
+static void server_cursor_motion_absolute(struct wl_listener *listener, void *data);
+static void server_cursor_button(struct wl_listener *listener, void *data);
+static void server_cursor_axis(struct wl_listener *listener, void *data);
+static void server_cursor_frame(struct wl_listener *listener, void *data);
+
 static struct planar_toplevel *desktop_toplevel_at(
 		struct planar_server *server, double lx, double ly,
 		struct wlr_surface **surface, double *sx, double *sy) {
@@ -110,6 +116,7 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
 }
 
 void process_cursor_move(struct planar_server *server, uint32_t time) {
+    (void)time;
     struct planar_toplevel *toplevel = server->grabbed_toplevel;
     wlr_scene_node_set_position(&toplevel->scene_tree->node,
         server->cursor->x - server->grab_x,
@@ -117,6 +124,7 @@ void process_cursor_move(struct planar_server *server, uint32_t time) {
 }
 
 void process_cursor_resize(struct planar_server *server, uint32_t time) {
+	(void)time;
 	/*
 	 * Resizing the grabbed toplevel can be a little bit complicated, because we
 	 * could be resizing from any corner or edge. This not only resizes the
@@ -299,6 +307,7 @@ static void server_cursor_axis(struct wl_listener *listener, void *data) {
 }
 
 static void server_cursor_frame(struct wl_listener *listener, void *data) {
+	(void)data;
 	/* This event is forwarded by the cursor when a pointer emits an frame
 	 * event. Frame events are sent after regular pointer events to group
 	 * multiple events together. For instance, two axis events may happen at the

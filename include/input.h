@@ -3,6 +3,6 @@
 
 #include "server.h"
 
-static void server_new_input(struct wl_listener *listener, void *data);
+void server_new_input(struct wl_listener *listener, void *data);
 
 #endif // PLANAR_INPUT_H

@@ -8,6 +8,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <strings.h>
 #include <wlr/util/log.h>
 
 static uint32_t parse_modifiers(const char *mod_str) {
@@ -34,16 +35,6 @@ static uint32_t parse_modifiers(const char *mod_str) {
 
     free(str);
     return mods;
-}
-
-static xkb_keysym_t parse_key(const char *key_str) {
-    xkb_keysym_t sym = xkb_keysym_from_name(key_str, XKB_KEYSYM_CASE_INSENSITIVE);
-    if (sym == XKB_KEY_NoSymbol) {
-        char xkb_key[64] = "XKB_KEY_";
-        strcat(xkb_key, key_str);
-        sym = xkb_keysym_from_name(xkb_key, XKB_KEYSYM_CASE_INSENSITIVE);
-    }
-    return sym;
 }
 
 static void parse_keybind(struct config *config, const char *key_combo, const char *command) {
@@ -184,7 +175,7 @@ bool handle_internal_command(struct planar_server *server, const char *cmd) {
     
     if (strncmp(cmd, "@move_workspace ", 15) == 0) {
         int offset_x, offset_y;
-        char *args;
+        char args[256];
         strncpy(args, cmd + 15, sizeof(args) - 1);
         args[sizeof(args) - 1] = '\0';
 
@@ -196,6 +187,7 @@ bool handle_internal_command(struct planar_server *server, const char *cmd) {
         return false;
     }
 
+    return false;
 }
 
 bool handle_external_command(const char *cmd) {

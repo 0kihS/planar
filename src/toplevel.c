@@ -45,6 +45,7 @@ static void begin_interactive(struct planar_toplevel *toplevel,
 }
 
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, map);
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
     focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
@@ -52,6 +53,7 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 
 static void xdg_toplevel_maximize(
 		struct wl_listener *listener, void *data) {
+	(void)data;
 	struct planar_toplevel *toplevel =
 		wl_container_of(listener, toplevel, request_maximize);
 	if (toplevel->xdg_toplevel->base->initialized) {
@@ -61,6 +63,7 @@ static void xdg_toplevel_maximize(
 
 static void xdg_toplevel_fullscreen(
 		struct wl_listener *listener, void *data) {
+	(void)data;
 	/* Just as with request_maximize, we must send a configure here. */
 	struct planar_toplevel *toplevel =
 		wl_container_of(listener, toplevel, request_fullscreen);
@@ -78,16 +81,19 @@ static void xdg_toplevel_resize(
 
 static void xdg_toplevel_move(
 	struct wl_listener *listener, void *data) {
+	(void)data;
 	struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, request_move);
 	begin_interactive(toplevel, PLANAR_CURSOR_MOVE, 0);
 }
 
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, unmap);
     wl_list_remove(&toplevel->link);
 }
 
 static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
     if (toplevel->xdg_toplevel->base->initial_commit) {
         wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
@@ -95,6 +101,7 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 }
 
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
 
     wl_list_remove(&toplevel->map.link);

@@ -25,8 +25,6 @@ struct planar_toplevel {
 
 void server_new_xdg_toplevel(struct wl_listener *listener, void *data);
 void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surface);
-static struct planar_toplevel *desktop_toplevel_at(struct planar_server *server, double lx, double ly,
-                                            struct wlr_surface **surface, double *sx, double *sy);
 void kill_active_toplevel(struct planar_server *server);
 
 #endif // PLANAR_TOPLEVEL_H

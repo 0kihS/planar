@@ -5,6 +5,7 @@
 #include <signal.h>
 
 static void handle_signal(int signo) {
+    (void)signo;
     struct planar_server server;
     server_finish(&server);
 }

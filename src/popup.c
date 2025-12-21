@@ -5,6 +5,7 @@
 #include <wlr/types/wlr_scene.h>
 
 void xdg_popup_commit(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_popup *popup = wl_container_of(listener, popup, commit);
 
     if (popup->xdg_popup->base->initial_commit) {
@@ -14,6 +15,7 @@ void xdg_popup_commit(struct wl_listener *listener, void *data) {
 }
 
 void xdg_popup_destroy(struct wl_listener *listener, void *data) {
+    (void)data;
     struct planar_popup *popup = wl_container_of(listener, popup, destroy);
 
     wl_list_remove(&popup->commit.link);
@@ -23,6 +25,7 @@ void xdg_popup_destroy(struct wl_listener *listener, void *data) {
 }
 
 void server_new_xdg_popup(struct wl_listener *listener, void *data) {
+    (void)listener;
     struct wlr_xdg_popup *xdg_popup = data;
 
 	struct planar_popup *popup = calloc(1, sizeof(*popup));
