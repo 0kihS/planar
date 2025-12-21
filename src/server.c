@@ -36,6 +36,40 @@ void convert_global_coords_to_scene(struct planar_server *server, double *x, dou
 }
 
 
+struct decoration_listeners {
+    struct wl_listener request_mode;
+    struct wl_listener destroy;
+};
+
+static void decoration_handle_request_mode(struct wl_listener *listener, void *data) {
+    (void)listener;
+    struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
+    if (decoration->toplevel->base->initialized) {
+        wlr_xdg_toplevel_decoration_v1_set_mode(decoration, WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+    }
+}
+
+static void decoration_handle_destroy(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct decoration_listeners *listeners = wl_container_of(listener, listeners, destroy);
+    wl_list_remove(&listeners->request_mode.link);
+    wl_list_remove(&listeners->destroy.link);
+    free(listeners);
+}
+
+static void server_new_toplevel_decoration(struct wl_listener *listener, void *data) {
+    (void)listener;
+    struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
+
+    struct decoration_listeners *listeners = calloc(1, sizeof(*listeners));
+
+    listeners->request_mode.notify = decoration_handle_request_mode;
+    wl_signal_add(&decoration->events.request_mode, &listeners->request_mode);
+
+    listeners->destroy.notify = decoration_handle_destroy;
+    wl_signal_add(&decoration->events.destroy, &listeners->destroy);
+}
+
 static void server_new_output(struct wl_listener *listener, void *data) {
     struct planar_server *server = wl_container_of(listener, server, new_output);
     struct wlr_output *wlr_output = data;
@@ -88,15 +122,13 @@ void server_init(struct planar_server *server) {
         server->layers[i] = wlr_scene_tree_create(&server->scene->tree);
     }
 
-    server->workspace_content_tree = wlr_scene_tree_create(server->layers[1]);
-
     server->xdg_shell = wlr_xdg_shell_create(server->wl_display, 3);
     assert(server->xdg_shell);
 
     server->xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server->wl_display);
 
-    //server->new_toplevel_decoration.notify = server_new_toplevel_decoration;
-    //wl_signal_add(&server->xdg_decoration_manager->events.new_toplevel_decoration, &server->new_toplevel_decoration);
+    server->new_toplevel_decoration.notify = server_new_toplevel_decoration;
+    wl_signal_add(&server->xdg_decoration_manager->events.new_toplevel_decoration, &server->new_toplevel_decoration);
 
     server->layer_shell = wlr_layer_shell_v1_create(server->wl_display, 4);
 
@@ -117,6 +149,7 @@ void server_init(struct planar_server *server) {
         ws->index = i;
         ws->scale = 1.0;
         ws->scene_tree = wlr_scene_tree_create(server->layers[1]);
+        wlr_scene_node_set_enabled(&ws->scene_tree->node, i == 0);
         wl_list_init(&ws->toplevels);
         wl_list_insert(&server->workspaces, &ws->link);
     }

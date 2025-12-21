@@ -11,7 +11,7 @@ void set_workspace_offset(struct planar_server *server, int offset_x, int offset
     active_workspace->global_offset.y = offset_y;
 
     // Move the workspace tree
-    wlr_scene_node_set_position(&server->workspace_content_tree->node, offset_x, offset_y);
+    wlr_scene_node_set_position(&active_workspace->scene_tree->node, offset_x, offset_y);
 
     // Request a frame to render the changes
     struct planar_output *output;
@@ -28,7 +28,7 @@ void update_workspace_offset(struct planar_server *server, int offset_x, int off
     active_workspace->global_offset.y += offset_y;
 
     // Move the workspace tree
-    struct wlr_scene_node *node = &server->workspace_content_tree->node;
+    struct wlr_scene_node *node = &active_workspace->scene_tree->node;
     wlr_scene_node_set_position(node, node->x + offset_x, node->y + offset_y);
 
     // Request a frame to render the changes
@@ -40,10 +40,7 @@ void update_workspace_offset(struct planar_server *server, int offset_x, int off
 
 void switch_to_workspace(struct planar_server *server, int index) {
     struct planar_workspace *new_workspace;
-    struct planar_toplevel *toplevel;
-    wl_list_for_each(toplevel, &server->active_workspace->toplevels, link) {
-        wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
-    }
+    wlr_scene_node_set_enabled(&server->active_workspace->scene_tree->node, false);
 
     wl_list_for_each(new_workspace, &server->workspaces, link) {
         if (new_workspace->index == index) {
@@ -53,10 +50,7 @@ void switch_to_workspace(struct planar_server *server, int index) {
     }
     
     // Update focus
-
-    wl_list_for_each(toplevel, &server->active_workspace->toplevels, link) {
-        wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
-    }
+    wlr_scene_node_set_enabled(&server->active_workspace->scene_tree->node, true);
     struct planar_output *output;
 
     wl_list_for_each(output, &server->outputs, link) {
@@ -99,9 +93,7 @@ void active_toplevel_to_workspace(struct planar_server *server, int index) {
     // Add to new workspace
     wl_list_insert(&new_workspace->toplevels, &toplevel->link);
     toplevel->workspace = new_workspace;
-
-    // Update visibility
-    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, new_workspace->visible);
+    wlr_scene_node_reparent(&toplevel->container->node, new_workspace->scene_tree);
 }
 
 void update_workspace_scale(struct planar_server *server, double scale, double pivot_x, double pivot_y) {
@@ -120,7 +112,7 @@ void update_workspace_scale(struct planar_server *server, double scale, double p
      ws->global_offset.y = pivot_y - pw_y * scale;
     
      // Apply new offset to workspace tree
-    wlr_scene_node_set_position(&server->workspace_content_tree->node,
+    wlr_scene_node_set_position(&ws->scene_tree->node,
         ws->global_offset.x, ws->global_offset.y);
         
     // Scale all toplevels

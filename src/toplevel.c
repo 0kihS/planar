@@ -2,6 +2,7 @@
 #include "server.h"
 #include "cursor.h"
 #include "workspaces.h"
+#include "decoration.h"
 
 #include <stdlib.h>
 #include <wlr/types/wlr_scene.h>
@@ -48,6 +49,13 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, map);
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+
+    // Create decoration for the toplevel
+    toplevel->decoration = decoration_create(toplevel);
+    if (toplevel->decoration) {
+        decoration_update_geometry(toplevel->decoration);
+    }
+
     focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
 }
 
@@ -89,6 +97,12 @@ static void xdg_toplevel_move(
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
     (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, unmap);
+
+    if (toplevel->decoration) {
+        decoration_destroy(toplevel->decoration);
+        toplevel->decoration = NULL;
+    }
+
     wl_list_remove(&toplevel->link);
 }
 
@@ -98,6 +112,12 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
     if (toplevel->xdg_toplevel->base->initial_commit) {
         wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
     }
+
+    // Update decoration geometry when surface commits
+    if (toplevel->decoration) {
+        decoration_update_geometry(toplevel->decoration);
+    }
+
     // Ensure scale is applied on commit
     if (toplevel->workspace && toplevel->workspace->scale != 1.0) {
         scale_toplevel(toplevel, toplevel->workspace->scale);
@@ -107,6 +127,12 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
     (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
+
+    // Clean up decoration if it still exists
+    if (toplevel->decoration) {
+        decoration_destroy(toplevel->decoration);
+        toplevel->decoration = NULL;
+    }
 
     wl_list_remove(&toplevel->map.link);
     wl_list_remove(&toplevel->unmap.link);
@@ -133,13 +159,24 @@ static void scale_buffer_iterator(struct wlr_scene_buffer *buffer, int sx, int s
 }
 
 void scale_toplevel(struct planar_toplevel *toplevel, double scale) {
-    if (!toplevel || !toplevel->scene_tree) return;
+    if (!toplevel || !toplevel->container) return;
 
-    wlr_scene_node_set_position(&toplevel->scene_tree->node,
+    // Position the container
+    wlr_scene_node_set_position(&toplevel->container->node,
         (int)(toplevel->logical_x * scale),
         (int)(toplevel->logical_y * scale));
 
+    // Scale the surface buffers
     wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scale_buffer_iterator, &scale);
+
+    // Position surface inside container (offset by border, scaled)
+    int border = DECORATION_BORDER_WIDTH;
+    wlr_scene_node_set_position(&toplevel->scene_tree->node, border, border);
+
+    // Update decoration with scale
+    if (toplevel->decoration) {
+        decoration_update_geometry_scaled(toplevel->decoration, scale);
+    }
 }
 
 void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
@@ -151,19 +188,23 @@ void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     toplevel->server = server;
     toplevel->xdg_toplevel = xdg_toplevel;
 
-    struct wlr_scene_tree *container = wlr_scene_tree_create(server->workspace_content_tree);
-    toplevel->scene_tree = wlr_scene_xdg_surface_create(container, xdg_toplevel->base);
-    toplevel->scene_tree->node.data = toplevel;
+    // Create container that will hold both decoration and surface
+    toplevel->container = wlr_scene_tree_create(workspace->scene_tree);
+    toplevel->container->node.data = toplevel;
+
+    // Create surface tree inside container, offset by border width
+    toplevel->scene_tree = wlr_scene_xdg_surface_create(toplevel->container, xdg_toplevel->base);
+    wlr_scene_node_set_position(&toplevel->scene_tree->node,
+        DECORATION_BORDER_WIDTH, DECORATION_BORDER_WIDTH);
+
     xdg_toplevel->base->data = toplevel->scene_tree;
     toplevel->workspace = workspace;
     wl_list_insert(&workspace->toplevels, &toplevel->link);
 
-    // Initialize logical coordinates from current position (likely 0,0 or dictated by layout)
-    // For a new window, let's just use current (0,0) or rely on first move.
-    toplevel->logical_x = toplevel->scene_tree->node.x;
-    toplevel->logical_y = toplevel->scene_tree->node.y;
+    toplevel->logical_x = 0;
+    toplevel->logical_y = 0;
 
-    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+    wlr_scene_node_set_enabled(&toplevel->container->node, true);
 
     toplevel->map.notify = xdg_toplevel_map;
     wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);
@@ -202,18 +243,8 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
         }
     }
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
-
-    // Find the parent content tree and raise the node within that tree
-    struct wlr_scene_tree *content_tree = server->workspace_content_tree;
-    struct wlr_scene_node *node = &toplevel->scene_tree->node;
-    
     // First move the node to the end of its parent's children list
-    wlr_scene_node_raise_to_top(node);
-    
-    // Then ensure the container is at the top of the content tree
-    if (node->parent && node->parent != content_tree) {
-        wlr_scene_node_raise_to_top(&node->parent->node);
-    }
+    wlr_scene_node_raise_to_top(&toplevel->container->node);
 
     // Update workspace list position
     wl_list_remove(&toplevel->link);

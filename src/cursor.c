@@ -3,8 +3,10 @@
 #include "toplevel.h"
 #include "output.h"
 #include "layers.h"
+#include "decoration.h"
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/edges.h>
 #include <string.h>
 #include <linux/input-event-codes.h>
@@ -14,6 +16,52 @@ static void server_cursor_motion_absolute(struct wl_listener *listener, void *da
 static void server_cursor_button(struct wl_listener *listener, void *data);
 static void server_cursor_axis(struct wl_listener *listener, void *data);
 static void server_cursor_frame(struct wl_listener *listener, void *data);
+
+static const char *cursor_name_for_edges(uint32_t edges) {
+    switch (edges) {
+    case WLR_EDGE_TOP:
+        return "top_side";
+    case WLR_EDGE_BOTTOM:
+        return "bottom_side";
+    case WLR_EDGE_LEFT:
+        return "left_side";
+    case WLR_EDGE_RIGHT:
+        return "right_side";
+    case WLR_EDGE_TOP | WLR_EDGE_LEFT:
+        return "top_left_corner";
+    case WLR_EDGE_TOP | WLR_EDGE_RIGHT:
+        return "top_right_corner";
+    case WLR_EDGE_BOTTOM | WLR_EDGE_LEFT:
+        return "bottom_left_corner";
+    case WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT:
+        return "bottom_right_corner";
+    default:
+        return NULL;
+    }
+}
+
+// Check if cursor is over any toplevel's decoration
+// Returns the toplevel if found, and sets edge_result:
+//   0 = on titlebar (move)
+//   1 = on border (resize, edges set)
+//  -1 = not on decoration
+static struct planar_toplevel *toplevel_decoration_at(
+        struct planar_server *server, double lx, double ly,
+        int *edge_result, uint32_t *edges) {
+    struct planar_toplevel *toplevel;
+    wl_list_for_each(toplevel, &server->active_workspace->toplevels, link) {
+        if (!toplevel->decoration) continue;
+
+        int result = decoration_get_edge_at(toplevel->decoration, lx, ly, edges);
+        if (result >= 0) {
+            *edge_result = result;
+            return toplevel;
+        }
+    }
+    *edge_result = -1;
+    *edges = 0;
+    return NULL;
+}
 
 static struct planar_toplevel *desktop_toplevel_at(
 		struct planar_server *server, double lx, double ly,
@@ -98,6 +146,25 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
         return;
     }
 
+    // Check decorations first
+    int edge_result;
+    uint32_t edges;
+    struct planar_toplevel *dec_toplevel = toplevel_decoration_at(server, cx, cy, &edge_result, &edges);
+    if (dec_toplevel) {
+        wlr_seat_pointer_clear_focus(seat);
+        if (edge_result == 0) {
+            // On titlebar
+            wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
+        } else {
+            // On border - show resize cursor
+            const char *cursor_name = cursor_name_for_edges(edges);
+            if (cursor_name) {
+                wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, cursor_name);
+            }
+        }
+        return;
+    }
+
     struct planar_toplevel *toplevel = desktop_toplevel_at(server,
             cx, cy, &surface, &sx, &sy);
 
@@ -124,27 +191,21 @@ void process_cursor_move(struct planar_server *server, uint32_t time) {
     toplevel->logical_x = new_node_x / scale;
     toplevel->logical_y = new_node_y / scale;
 
-    wlr_scene_node_set_position(&toplevel->scene_tree->node,
+    wlr_scene_node_set_position(&toplevel->container->node,
         toplevel->logical_x * scale,
         toplevel->logical_y * scale);
 }
 
 void process_cursor_resize(struct planar_server *server, uint32_t time) {
 	(void)time;
-	/*
-	 * Resizing the grabbed toplevel can be a little bit complicated, because we
-	 * could be resizing from any corner or edge. This not only resizes the
-	 * toplevel on one or two axes, but can also move the toplevel if you resize
-	 * from the top or left edges (or top-left corner).
-	 *
-	 * Note that some shortcuts are taken here. In a more fleshed-out
-	 * compositor, you'd wait for the client to prepare a buffer at the new
-	 * size, then commit any movement that was prepared.
-	 */
 	struct planar_toplevel *toplevel = server->grabbed_toplevel;
-    double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
+	double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
+	int border = DECORATION_BORDER_WIDTH;
+
 	double border_x = server->cursor->x - server->grab_x;
 	double border_y = server->cursor->y - server->grab_y;
+
+	// grab_geobox holds the client area (inside borders)
 	int new_left = server->grab_geobox.x;
 	int new_right = server->grab_geobox.x + server->grab_geobox.width;
 	int new_top = server->grab_geobox.y;
@@ -173,15 +234,14 @@ void process_cursor_resize(struct planar_server *server, uint32_t time) {
 		}
 	}
 
-	struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
-    
-    // Convert new positions to logical to update stored state
-    toplevel->logical_x = (new_left - geo_box->x) / scale;
-    toplevel->logical_y = (new_top - geo_box->y) / scale;
+	// Container position is client position minus border
+	int container_x = new_left - border;
+	int container_y = new_top - border;
 
-	wlr_scene_node_set_position(&toplevel->scene_tree->node,
-		toplevel->logical_x * scale, 
-        toplevel->logical_y * scale);
+	toplevel->logical_x = container_x / scale;
+	toplevel->logical_y = container_y / scale;
+
+	wlr_scene_node_set_position(&toplevel->container->node, container_x, container_y);
 
 	int new_width = (new_right - new_left) / scale;
 	int new_height = (new_bottom - new_top) / scale;
@@ -250,8 +310,8 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
         if (toplevel) {
             server->cursor_mode = PLANAR_CURSOR_MOVE;
             server->grabbed_toplevel = toplevel;
-            server->grab_x = cx - toplevel->scene_tree->node.x;
-            server->grab_y = cy - toplevel->scene_tree->node.y;
+            server->grab_x = cx - toplevel->container->node.x;
+            server->grab_y = cy - toplevel->container->node.y;
             return;
         }
     }
@@ -290,6 +350,44 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
     if (layer_surface) {
         focus_layer_surface(layer_surface, surface);
         return;
+    }
+
+    // Check if clicking on a decoration
+    if (event->button == BTN_LEFT) {
+        int edge_result;
+        uint32_t edges;
+        struct planar_toplevel *dec_toplevel = toplevel_decoration_at(server, cx, cy, &edge_result, &edges);
+        if (dec_toplevel) {
+            focus_toplevel(dec_toplevel, dec_toplevel->xdg_toplevel->base->surface);
+
+            // Border - begin resize
+            server->cursor_mode = PLANAR_CURSOR_RESIZE;
+            server->grabbed_toplevel = dec_toplevel;
+            server->resize_edges = edges;
+
+            int border = DECORATION_BORDER_WIDTH;
+            struct wlr_box *geo_box = &dec_toplevel->xdg_toplevel->base->geometry;
+            double scale = dec_toplevel->workspace ? dec_toplevel->workspace->scale : 1.0;
+
+            // Client area starts at container + border
+            int client_x = dec_toplevel->container->node.x + border;
+            int client_y = dec_toplevel->container->node.y + border;
+            int client_w = geo_box->width * scale;
+            int client_h = geo_box->height * scale;
+
+            double border_x = client_x + ((edges & WLR_EDGE_RIGHT) ? client_w : 0);
+            double border_y = client_y + ((edges & WLR_EDGE_BOTTOM) ? client_h : 0);
+
+            server->grab_x = cx - border_x;
+            server->grab_y = cy - border_y;
+
+            server->grab_geobox.x = client_x;
+            server->grab_geobox.y = client_y;
+            server->grab_geobox.width = client_w;
+            server->grab_geobox.height = client_h;
+
+            return;
+        }
     }
 
     struct planar_toplevel *toplevel = desktop_toplevel_at(server,

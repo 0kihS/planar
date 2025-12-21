@@ -45,7 +45,6 @@ struct planar_server {
 	struct wl_listener new_toplevel_decoration;
 
 	struct wlr_scene_tree *layers[4];
-	struct wlr_scene_tree *workspace_content_tree;  /* Pannable layer for toplevels */
     struct wl_listener new_layer_shell_surface;
 
     struct wl_list workspaces;

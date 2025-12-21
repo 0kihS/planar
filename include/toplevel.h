@@ -6,12 +6,16 @@
 #include "server.h"
 #include "workspaces.h"
 
+struct planar_decoration;
+
 struct planar_toplevel {
     struct wl_list link;
     struct planar_server *server;
     struct wlr_xdg_toplevel *xdg_toplevel;
-    struct wlr_scene_tree *scene_tree;
+    struct wlr_scene_tree *container;  // Parent container that holds decoration + surface
+    struct wlr_scene_tree *scene_tree; // The actual xdg surface tree
     struct planar_workspace *workspace;
+    struct planar_decoration *decoration;
     double logical_x, logical_y;
 
     struct wl_listener map;

@@ -12,7 +12,6 @@ struct planar_workspace {
     struct wlr_scene_tree *scene_tree;
     struct wl_listener output_destroy;
     int index;
-    bool visible;
 
     struct {
         int x, y;

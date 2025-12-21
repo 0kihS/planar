@@ -73,6 +73,7 @@ protocols_server_dep = declare_dependency(
 src_files = files(
 	'src/config.c',
 	'src/cursor.c',
+	'src/decoration.c',
 	'src/input.c',
 	'src/keyboard.c',
 	'src/layer-shell.c',
