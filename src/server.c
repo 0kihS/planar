@@ -88,6 +88,8 @@ void server_init(struct planar_server *server) {
         server->layers[i] = wlr_scene_tree_create(&server->scene->tree);
     }
 
+    server->workspace_content_tree = wlr_scene_tree_create(server->layers[1]);
+
     server->xdg_shell = wlr_xdg_shell_create(server->wl_display, 3);
     assert(server->xdg_shell);
 

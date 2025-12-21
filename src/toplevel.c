@@ -118,13 +118,13 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
 void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     struct planar_server *server = wl_container_of(listener, server, new_xdg_toplevel);
     struct wlr_xdg_toplevel *xdg_toplevel = data;
-    struct wlr_scene_tree *layer_tree = server->layers[1];
     struct planar_toplevel *toplevel = calloc(1, sizeof(*toplevel));
     struct planar_workspace *workspace = server->active_workspace;
 
     toplevel->server = server;
     toplevel->xdg_toplevel = xdg_toplevel;
-    struct wlr_scene_tree *container = wlr_scene_tree_create(layer_tree);
+
+    struct wlr_scene_tree *container = wlr_scene_tree_create(server->workspace_content_tree);
     toplevel->scene_tree = wlr_scene_xdg_surface_create(container, xdg_toplevel->base);
     toplevel->scene_tree->node.data = toplevel;
     xdg_toplevel->base->data = toplevel->scene_tree;
@@ -171,15 +171,15 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
     }
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
 
-    // Find the parent layer tree and raise the node within that tree
-    struct wlr_scene_tree *layer_tree = server->layers[1]; // Bottom layer where toplevels live
+    // Find the parent content tree and raise the node within that tree
+    struct wlr_scene_tree *content_tree = server->workspace_content_tree;
     struct wlr_scene_node *node = &toplevel->scene_tree->node;
     
     // First move the node to the end of its parent's children list
     wlr_scene_node_raise_to_top(node);
     
-    // Then ensure the container is at the top of the layer tree
-    if (node->parent && node->parent != layer_tree) {
+    // Then ensure the container is at the top of the content tree
+    if (node->parent && node->parent != content_tree) {
         wlr_scene_node_raise_to_top(&node->parent->node);
     }
 
