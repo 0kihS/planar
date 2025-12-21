@@ -103,3 +103,34 @@ void active_toplevel_to_workspace(struct planar_server *server, int index) {
     // Update visibility
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, new_workspace->visible);
 }
+
+void update_workspace_scale(struct planar_server *server, double scale, double pivot_x, double pivot_y) {
+     struct planar_workspace *ws = server->active_workspace;
+     double old_scale = ws->scale;
+     
+     if (scale < 0.1) scale = 0.1;
+     if (scale > 5.0) scale = 5.0;
+    
+     ws->scale = scale;
+
+     double pw_x = (pivot_x - ws->global_offset.x) / old_scale;
+     double pw_y = (pivot_y - ws->global_offset.y) / old_scale;
+     
+     ws->global_offset.x = pivot_x - pw_x * scale;
+     ws->global_offset.y = pivot_y - pw_y * scale;
+    
+     // Apply new offset to workspace tree
+    wlr_scene_node_set_position(&server->workspace_content_tree->node,
+        ws->global_offset.x, ws->global_offset.y);
+        
+    // Scale all toplevels
+    struct planar_toplevel *toplevel;
+    wl_list_for_each(toplevel, &ws->toplevels, link) {
+        scale_toplevel(toplevel, scale);
+    }
+    
+    struct planar_output *output;
+    wl_list_for_each(output, &server->outputs, link) {
+        wlr_output_schedule_frame(output->wlr_output);
+    }
+}

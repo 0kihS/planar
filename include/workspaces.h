@@ -10,19 +10,20 @@ struct planar_workspace {
     struct wl_list link;
     struct wl_list toplevels;
     struct wlr_scene_tree *scene_tree;
-    struct planar_output *output;
+    struct wl_listener output_destroy;
     int index;
     bool visible;
 
     struct {
-        double x;
-        double y;
+        int x, y;
     } global_offset;
+    double scale;
 };
 
 void switch_to_workspace(struct planar_server *server, int index);
 void active_toplevel_to_workspace(struct planar_server *server, int index);
 void update_workspace_offset(struct planar_server *server, int offset_x, int offset_y);
 void set_workspace_offset(struct planar_server *server, int offset_x, int offset_y);
+void update_workspace_scale(struct planar_server *server, double scale, double pivot_x, double pivot_y);
 
 #endif

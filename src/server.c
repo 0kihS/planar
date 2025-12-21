@@ -115,6 +115,7 @@ void server_init(struct planar_server *server) {
     for (int i = 0; i < WORKSPACE_COUNT; i++) {
         struct planar_workspace *ws = calloc(1, sizeof(*ws));
         ws->index = i;
+        ws->scale = 1.0;
         ws->scene_tree = wlr_scene_tree_create(server->layers[1]);
         wl_list_init(&ws->toplevels);
         wl_list_insert(&server->workspaces, &ws->link);

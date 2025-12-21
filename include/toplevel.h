@@ -12,6 +12,7 @@ struct planar_toplevel {
     struct wlr_xdg_toplevel *xdg_toplevel;
     struct wlr_scene_tree *scene_tree;
     struct planar_workspace *workspace;
+    double logical_x, logical_y;
 
     struct wl_listener map;
     struct wl_listener unmap;
@@ -26,5 +27,6 @@ struct planar_toplevel {
 void server_new_xdg_toplevel(struct wl_listener *listener, void *data);
 void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surface);
 void kill_active_toplevel(struct planar_server *server);
+void scale_toplevel(struct planar_toplevel *toplevel, double scale);
 
 #endif // PLANAR_TOPLEVEL_H

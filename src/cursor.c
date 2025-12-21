@@ -118,9 +118,15 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
 void process_cursor_move(struct planar_server *server, uint32_t time) {
     (void)time;
     struct planar_toplevel *toplevel = server->grabbed_toplevel;
+    double new_node_x = server->cursor->x - server->grab_x;
+    double new_node_y = server->cursor->y - server->grab_y;
+    double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
+    toplevel->logical_x = new_node_x / scale;
+    toplevel->logical_y = new_node_y / scale;
+
     wlr_scene_node_set_position(&toplevel->scene_tree->node,
-        server->cursor->x - server->grab_x,
-        server->cursor->y - server->grab_y);
+        toplevel->logical_x * scale,
+        toplevel->logical_y * scale);
 }
 
 void process_cursor_resize(struct planar_server *server, uint32_t time) {
@@ -136,6 +142,7 @@ void process_cursor_resize(struct planar_server *server, uint32_t time) {
 	 * size, then commit any movement that was prepared.
 	 */
 	struct planar_toplevel *toplevel = server->grabbed_toplevel;
+    double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
 	double border_x = server->cursor->x - server->grab_x;
 	double border_y = server->cursor->y - server->grab_y;
 	int new_left = server->grab_geobox.x;
@@ -167,11 +174,17 @@ void process_cursor_resize(struct planar_server *server, uint32_t time) {
 	}
 
 	struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
-	wlr_scene_node_set_position(&toplevel->scene_tree->node,
-		new_left - geo_box->x, new_top - geo_box->y);
+    
+    // Convert new positions to logical to update stored state
+    toplevel->logical_x = (new_left - geo_box->x) / scale;
+    toplevel->logical_y = (new_top - geo_box->y) / scale;
 
-	int new_width = new_right - new_left;
-	int new_height = new_bottom - new_top;
+	wlr_scene_node_set_position(&toplevel->scene_tree->node,
+		toplevel->logical_x * scale, 
+        toplevel->logical_y * scale);
+
+	int new_width = (new_right - new_left) / scale;
+	int new_height = (new_bottom - new_top) / scale;
 	wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, new_width, new_height);
 }
 
@@ -184,11 +197,9 @@ static void server_cursor_motion(struct wl_listener *listener, void *data) {
             event->delta_x, event->delta_y);
 
     if (server->cursor_mode == PLANAR_CURSOR_PANNING) {
-        // Calculate total offset from initial grab point
         double dx = server->cursor->x - server->grab_x;
         double dy = server->cursor->y - server->grab_y;
         
-        // Set the workspace offset relative to the initial workspace position
         set_workspace_offset(server, 
             server->grab_workspace_x + dx,
             server->grab_workspace_y + dy);
@@ -237,7 +248,6 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
                 cx, cy, &surface, &sx, &sy);
         
         if (toplevel) {
-            // Start the drag operation
             server->cursor_mode = PLANAR_CURSOR_MOVE;
             server->grabbed_toplevel = toplevel;
             server->grab_x = cx - toplevel->scene_tree->node.x;
@@ -246,18 +256,15 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
         }
     }
 
-    // Handle button release during drag
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         if (server->cursor_mode == PLANAR_CURSOR_MOVE) {
-            server->cursor_mode = PLANAR_CURSOR_DRAG_PENDING;  // Go back to pending mode
+            server->cursor_mode = PLANAR_CURSOR_DRAG_PENDING;
         }
-        // Don't reset cursor mode here as the key might still be held
     }
 
     wlr_seat_pointer_notify_button(server->seat,
             event->time_msec, event->button, event->state);
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-        // Reset the cursor mode when any button is released
         reset_cursor_mode(server);
         return;
     }
@@ -265,7 +272,6 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
     if (event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
         if (event->button == BTN_MIDDLE) {
             server->cursor_mode = PLANAR_CURSOR_PANNING;
-            // Store initial cursor position and workspace offset for panning
             server->grab_x = server->cursor->x;
             server->grab_y = server->cursor->y;
             server->grab_workspace_x = server->active_workspace->global_offset.x;
@@ -295,12 +301,35 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
 }
 
 static void server_cursor_axis(struct wl_listener *listener, void *data) {
-	/* This event is forwarded by the cursor when a pointer emits an axis event,
-	 * for example when you move the scroll wheel. */
 	struct planar_server *server =
 		wl_container_of(listener, server, cursor_axis);
 	struct wlr_pointer_axis_event *event = data;
-	/* Notify the client with pointer focus of the axis event. */
+    
+    // Check for Ctrl + Scroll
+    struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+    if (keyboard && (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_CTRL)) {
+        if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+            double zoom_factor = 0.1;
+            double scale = server->active_workspace->scale;
+            // Scroll down (-delta) -> zoom out. Scroll up (+delta) -> zoom in?
+            // Actually usually negative delta is scroll up.
+            // Let's assume standard wheel: delta < 0 is scroll up.
+            
+            // Normalize delta
+            double delta = event->delta;
+            if (delta == 0) delta = event->delta_discrete * 10;
+            
+            if (delta < 0) {
+                scale += zoom_factor;
+            } else {
+                scale -= zoom_factor;
+            }
+            
+            update_workspace_scale(server, scale, server->cursor->x, server->cursor->y);
+            return;
+        }
+    }
+
 	wlr_seat_pointer_notify_axis(server->seat,
 			event->time_msec, event->orientation, event->delta,
 			event->delta_discrete, event->source, event->relative_direction);

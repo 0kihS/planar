@@ -98,6 +98,10 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
     if (toplevel->xdg_toplevel->base->initial_commit) {
         wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
     }
+    // Ensure scale is applied on commit
+    if (toplevel->workspace && toplevel->workspace->scale != 1.0) {
+        scale_toplevel(toplevel, toplevel->workspace->scale);
+    }
 }
 
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
@@ -115,6 +119,29 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
     free(toplevel);
 }
 
+
+static void scale_buffer_iterator(struct wlr_scene_buffer *buffer, int sx, int sy, void *data) {
+    (void)sx;
+    (void)sy;
+    double scale = *(double *)data;
+
+    if (buffer->buffer) {
+        wlr_scene_buffer_set_dest_size(buffer,
+            buffer->buffer->width * scale,
+            buffer->buffer->height * scale);
+    }
+}
+
+void scale_toplevel(struct planar_toplevel *toplevel, double scale) {
+    if (!toplevel || !toplevel->scene_tree) return;
+
+    wlr_scene_node_set_position(&toplevel->scene_tree->node,
+        (int)(toplevel->logical_x * scale),
+        (int)(toplevel->logical_y * scale));
+
+    wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scale_buffer_iterator, &scale);
+}
+
 void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     struct planar_server *server = wl_container_of(listener, server, new_xdg_toplevel);
     struct wlr_xdg_toplevel *xdg_toplevel = data;
@@ -130,6 +157,11 @@ void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     xdg_toplevel->base->data = toplevel->scene_tree;
     toplevel->workspace = workspace;
     wl_list_insert(&workspace->toplevels, &toplevel->link);
+
+    // Initialize logical coordinates from current position (likely 0,0 or dictated by layout)
+    // For a new window, let's just use current (0,0) or rely on first move.
+    toplevel->logical_x = toplevel->scene_tree->node.x;
+    toplevel->logical_y = toplevel->scene_tree->node.y;
 
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
 
