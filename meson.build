@@ -75,6 +75,7 @@ src_files = files(
 	'src/cursor.c',
 	'src/decoration.c',
 	'src/input.c',
+	'src/ipc.c',
 	'src/keyboard.c',
 	'src/layer-shell.c',
 	'src/output.c',
@@ -98,5 +99,12 @@ executable(
 		protocols_server_dep
 	],
 	include_directories: include_directories('include'),
+	install: true,
+)
+
+# planarctl CLI tool
+executable(
+	'planarctl',
+	'planarctl/planarctl.c',
 	install: true,
 )

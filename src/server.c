@@ -1,28 +1,29 @@
 #include "server.h"
-#include "output.h"
-#include "input.h"
-#include "toplevel.h"
-#include "popup.h"
-#include "cursor.h"
-#include "seat.h"
-#include "layers.h"
-#include "workspaces.h"
 #include "config.h"
+#include "cursor.h"
+#include "input.h"
+#include "ipc.h"
 #include "keyboard.h"
+#include "layers.h"
+#include "output.h"
+#include "popup.h"
+#include "seat.h"
+#include "toplevel.h"
+#include "workspaces.h"
 
-#include <unistd.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_data_device.h>
-#include <wlr/types/wlr_scene.h>
-#include <wlr/types/wlr_subcompositor.h>
-#include <wlr/types/wlr_layer_shell_v1.h>
-#include <wlr/types/wlr_screencopy_v1.h>
-#include <wlr/types/wlr_xdg_output_v1.h>
-#include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_screencopy_v1.h>
+#include <wlr/types/wlr_subcompositor.h>
+#include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/util/log.h>
 
 void convert_scene_coords_to_global(struct planar_server *server, double *x, double *y) {
@@ -34,7 +35,6 @@ void convert_global_coords_to_scene(struct planar_server *server, double *x, dou
     *x -= server->active_workspace->global_offset.x;
     *y -= server->active_workspace->global_offset.y;
 }
-
 
 struct decoration_listeners {
     struct wl_listener request_mode;
@@ -92,6 +92,11 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 }
 
 void server_init(struct planar_server *server) {
+    wl_list_init(&server->ipc_clients);
+    wl_list_init(&server->ipc_event_clients);
+    server->ipc_socket = -1;
+    server->ipc_event_socket = -1;
+
     server->wl_display = wl_display_create();
     server->backend = wlr_backend_autocreate(wl_display_get_event_loop(server->wl_display), NULL);
     server->renderer = wlr_renderer_autocreate(server->backend);
@@ -139,9 +144,9 @@ void server_init(struct planar_server *server) {
     wl_signal_add(&server->xdg_shell->events.new_toplevel, &server->new_xdg_toplevel);
 
     server->config = config_load(NULL);
-        if (!server->config) {
-            wlr_log(WLR_INFO, "No config file found, using defaults");
-        }
+    if (!server->config) {
+        wlr_log(WLR_INFO, "No config file found, using defaults");
+    }
 
     wl_list_init(&server->workspaces);
     for (int i = 0; i < WORKSPACE_COUNT; i++) {
@@ -194,9 +199,25 @@ void server_init(struct planar_server *server) {
 
     server->socket = socket;
 
+    /* Initialize default settings */
+    server->settings.border_width = 4;
+    server->settings.border_color[0] = 0.3f;
+    server->settings.border_color[1] = 0.3f;
+    server->settings.border_color[2] = 0.3f;
+    server->settings.border_color[3] = 1.0f;
+    server->settings.zoom_min = 0.1;
+    server->settings.zoom_max = 5.0;
+    server->settings.zoom_step = 0.1;
+    server->settings.cursor_size = 24;
+
+    /* Initialize IPC */
+    if (!ipc_init(server)) {
+        wlr_log(WLR_ERROR, "Failed to initialize IPC");
+    }
+
     switch_to_workspace(server, 0);
 
-    if (server->config->startup_cmd) {
+    if (server->config && server->config->startup_cmd) {
         handle_external_command(server->config->startup_cmd);
     }
 }
@@ -211,6 +232,7 @@ void server_run(struct planar_server *server) {
 }
 
 void server_finish(struct planar_server *server) {
+    ipc_finish(server);
     wl_display_destroy_clients(server->wl_display);
     wl_list_remove(&server->new_input.link);
     wl_list_remove(&server->new_output.link);

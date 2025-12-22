@@ -203,7 +203,7 @@ void process_cursor_resize(struct planar_server *server, uint32_t time) {
 	(void)time;
 	struct planar_toplevel *toplevel = server->grabbed_toplevel;
 	double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
-	int border = DECORATION_BORDER_WIDTH;
+	int border = server->settings.border_width;
 
 	double border_x = server->cursor->x - server->grab_x;
 	double border_y = server->cursor->y - server->grab_y;
@@ -368,7 +368,7 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
             server->grabbed_toplevel = dec_toplevel;
             server->resize_edges = edges;
 
-            int border = DECORATION_BORDER_WIDTH;
+            int border = server->settings.border_width;
             struct wlr_box *geo_box = &dec_toplevel->xdg_toplevel->base->geometry;
             double scale = dec_toplevel->workspace ? dec_toplevel->workspace->scale : 1.0;
 
@@ -410,7 +410,7 @@ static void server_cursor_axis(struct wl_listener *listener, void *data) {
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
     if (keyboard && (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_CTRL)) {
         if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-            double zoom_factor = 0.1;
+            double zoom_step = server->settings.zoom_step;
             double scale = server->active_workspace->scale;
             // Scroll down (-delta) -> zoom out. Scroll up (+delta) -> zoom in?
             // Actually usually negative delta is scroll up.
@@ -419,11 +419,11 @@ static void server_cursor_axis(struct wl_listener *listener, void *data) {
             // Normalize delta
             double delta = event->delta;
             if (delta == 0) delta = event->delta_discrete * 10;
-            
+
             if (delta < 0) {
-                scale += zoom_factor;
+                scale += zoom_step;
             } else {
-                scale -= zoom_factor;
+                scale -= zoom_step;
             }
             
             update_workspace_scale(server, scale, server->cursor->x, server->cursor->y);

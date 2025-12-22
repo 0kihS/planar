@@ -1,7 +1,6 @@
 #include "config.h"
 #include "toml.h"
-#include "workspaces.h"
-#include "toplevel.h"
+#include "ipc.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -156,37 +155,10 @@ void config_destroy(struct config *config) {
 }
 
 bool handle_internal_command(struct planar_server *server, const char *cmd) {
-    if (strncmp(cmd, "@workspace ", 10) == 0) {
-        int workspace = atoi(cmd + 10);
-        switch_to_workspace(server, workspace - 1);
-        return true;
+    /* Strip the '@' prefix and dispatch via IPC handler */
+    if (cmd[0] == '@') {
+        return ipc_dispatch_command(server, cmd + 1);
     }
-    
-    if (strcmp(cmd, "@killactive") == 0) {
-        kill_active_toplevel(server);
-        return true;
-    }
-    
-    if (strncmp(cmd, "@move_to_workspace ", 18) == 0) {
-        int workspace = atoi(cmd + 18);
-        active_toplevel_to_workspace(server, workspace - 1);
-        return true;
-    }
-    
-    if (strncmp(cmd, "@move_workspace ", 15) == 0) {
-        int offset_x, offset_y;
-        char args[256];
-        strncpy(args, cmd + 15, sizeof(args) - 1);
-        args[sizeof(args) - 1] = '\0';
-
-        if (sscanf(args, "%d %d", &offset_x, &offset_y) == 2) {
-            update_workspace_offset(server, offset_x, offset_y);
-            return true;
-            }
-    
-        return false;
-    }
-
     return false;
 }
 

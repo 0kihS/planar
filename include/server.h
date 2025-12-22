@@ -84,6 +84,22 @@ struct planar_server {
 	struct wlr_output_layout *output_layout;
 	struct wl_list outputs;
 	struct wl_listener new_output;
+
+	int ipc_socket;
+	int ipc_event_socket;
+	struct wl_event_source *ipc_event_source;
+	struct wl_event_source *ipc_event_socket_source;
+	struct wl_list ipc_clients;
+	struct wl_list ipc_event_clients;
+
+	struct {
+		int border_width;
+		float border_color[4];
+		double zoom_min;
+		double zoom_max;
+		double zoom_step;
+		int cursor_size;
+	} settings;
 };
 
 void convert_scene_coords_to_global(struct planar_server *server, double *x, double *y);
