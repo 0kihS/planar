@@ -11,24 +11,33 @@
 static void print_usage(const char *prog) {
     fprintf(stderr, "Usage: %s [options] <command> [args...]\n", prog);
     fprintf(stderr, "\nOptions:\n");
-    fprintf(stderr, "  -e, --events    Subscribe to events (streams continuously)\n");
-    fprintf(stderr, "  -h, --help      Show this help\n");
+    fprintf(stderr, "  -e, --events                Subscribe to events (streams continuously)\n");
+    fprintf(stderr, "  -h, --help                  Show this help\n");
     fprintf(stderr, "\nCommands:\n");
-    fprintf(stderr, "  workspace <N>              Switch to workspace N\n");
-    fprintf(stderr, "  killactive                 Close focused window\n");
-    fprintf(stderr, "  move_to_workspace <N>      Move focused window to workspace N\n");
-    fprintf(stderr, "  move_workspace <X> <Y>     Pan workspace by offset\n");
-    fprintf(stderr, "  set <setting> <value>      Set a runtime setting\n");
-    fprintf(stderr, "  get <setting>              Get a runtime setting\n");
+    fprintf(stderr, "  workspace <N>               Switch to workspace N\n");
+    fprintf(stderr, "  killactive                  Close focused window\n");
+    fprintf(stderr, "  move_to_workspace <N>       Move focused window to workspace N\n");
+    fprintf(stderr, "  move_workspace <X> <Y>      Pan workspace by offset\n");
+    fprintf(stderr, "  focus_window <id>           Focus window by ID\n");
+    fprintf(stderr, "  close_window <id>           Close window by ID\n");
+    fprintf(stderr, "  move_window <id> <X> <Y>    Move window to logical coordinates\n");
+    fprintf(stderr, "  resize_window <id> <W> <H>  Resize window\n");
+    fprintf(stderr, "  move_window_to_workspace <id> <N>\n");
+    fprintf(stderr, "                              Move window to workspace N\n");
+    fprintf(stderr, "  spawn <command>             Spawn a process\n");
+    fprintf(stderr, "  set <setting> <value>       Set a runtime setting\n");
+    fprintf(stderr, "  get <setting>               Get a runtime setting\n");
     fprintf(stderr, "\nSettings:\n");
-    fprintf(stderr, "  border_width <N>           Border width in pixels (0-32)\n");
-    fprintf(stderr, "  border_color <R G B A>     Border color (floats 0.0-1.0)\n");
-    fprintf(stderr, "  zoom_min <N>               Minimum zoom level\n");
-    fprintf(stderr, "  zoom_max <N>               Maximum zoom level\n");
-    fprintf(stderr, "  zoom_step <N>              Zoom step size\n");
-    fprintf(stderr, "  cursor_size <N>            Cursor size (8-128)\n");
-    fprintf(stderr, "  workspaces                 Get workspace info (get only)\n");
-    fprintf(stderr, "  focused                    Get focused window info (get only)\n");
+    fprintf(stderr, "  border_width <N>            Border width in pixels (0-32)\n");
+    fprintf(stderr, "  border_color <R G B A>      Border color (floats 0.0-1.0)\n");
+    fprintf(stderr, "  zoom_min <N>                Minimum zoom level\n");
+    fprintf(stderr, "  zoom_max <N>                Maximum zoom level\n");
+    fprintf(stderr, "  zoom_step <N>               Zoom step size\n");
+    fprintf(stderr, "  cursor_size <N>             Cursor size (8-128)\n");
+    fprintf(stderr, "  workspaces                  Get workspace info (get only)\n");
+    fprintf(stderr, "  focused                     Get focused window info (get only)\n");
+    fprintf(stderr, "  windows                     List all windows (get only)\n");
+    fprintf(stderr, "  window <id>                 Get window info (get only)\n");
 }
 
 static int connect_socket(const char *path) {
