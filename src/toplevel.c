@@ -91,6 +91,11 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, map);
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
 
+    if (toplevel->window_id) {
+        free(toplevel->window_id);
+    }
+    toplevel->window_id = generate_window_id(toplevel->server, toplevel->xdg_toplevel->app_id);
+
     toplevel->decoration = decoration_create(toplevel);
     if (toplevel->decoration) {
         decoration_update_geometry(toplevel->decoration);
@@ -257,7 +262,7 @@ void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     toplevel->logical_x = 0;
     toplevel->logical_y = 0;
 
-    toplevel->window_id = generate_window_id(server, xdg_toplevel->app_id);
+    toplevel->window_id = NULL;  // Will be set at map time when app_id is available
     toplevel->instance_number = 0;
 
     wlr_scene_node_set_enabled(&toplevel->container->node, true);

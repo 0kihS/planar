@@ -10,8 +10,10 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #include <wlr/util/log.h>
+#include <xkbcommon/xkbcommon.h>
 
 #define IPC_BUFFER_SIZE 4096
 
@@ -228,6 +230,173 @@ static void handle_get_command(struct planar_server *server, int client_fd,
   }
 }
 
+static uint32_t get_current_time_msec(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+}
+
+// Find a keycode that produces the given keysym (returns 0 if not found)
+static xkb_keycode_t find_keycode_for_keysym(struct xkb_keymap *keymap,
+                                              struct xkb_state *state,
+                                              xkb_keysym_t keysym,
+                                              bool *needs_shift) {
+  *needs_shift = false;
+
+  // Iterate through all possible keycodes (typically 8-255 for evdev)
+  xkb_keycode_t min_keycode = xkb_keymap_min_keycode(keymap);
+  xkb_keycode_t max_keycode = xkb_keymap_max_keycode(keymap);
+
+  for (xkb_keycode_t keycode = min_keycode; keycode <= max_keycode; keycode++) {
+    // Try without shift first
+    xkb_keysym_t sym = xkb_state_key_get_one_sym(state, keycode);
+    if (sym == keysym) {
+      return keycode;
+    }
+  }
+
+  // Try with shift modifier
+  for (xkb_keycode_t keycode = min_keycode; keycode <= max_keycode; keycode++) {
+    // Get keysyms at level 1 (shifted)
+    const xkb_keysym_t *syms;
+    xkb_layout_index_t layout = xkb_state_key_get_layout(state, keycode);
+    int num_syms =
+        xkb_keymap_key_get_syms_by_level(keymap, keycode, layout, 1, &syms);
+    for (int i = 0; i < num_syms; i++) {
+      if (syms[i] == keysym) {
+        *needs_shift = true;
+        return keycode;
+      }
+    }
+  }
+
+  return 0;
+}
+
+static bool handle_send_keys(struct planar_server *server, const char *args) {
+  char window_id[256];
+  char text[1024];
+
+  // Parse: window_id followed by text (rest of line)
+  const char *space = strchr(args, ' ');
+  if (!space) {
+    wlr_log(WLR_ERROR, "send_keys: missing text argument");
+    return false;
+  }
+
+  size_t id_len = space - args;
+  if (id_len >= sizeof(window_id)) {
+    id_len = sizeof(window_id) - 1;
+  }
+  strncpy(window_id, args, id_len);
+  window_id[id_len] = '\0';
+
+  // Skip space and get the rest as text
+  const char *text_start = space + 1;
+  strncpy(text, text_start, sizeof(text) - 1);
+  text[sizeof(text) - 1] = '\0';
+
+  // Find target window
+  struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+  if (!toplevel) {
+    wlr_log(WLR_ERROR, "send_keys: window '%s' not found", window_id);
+    return false;
+  }
+
+  // Ensure window has focus
+  if (toplevel->workspace != server->active_workspace) {
+    switch_to_workspace(server, toplevel->workspace->index);
+  }
+  focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
+
+  // Get keyboard
+  struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+  if (!keyboard || !keyboard->xkb_state) {
+    wlr_log(WLR_ERROR, "send_keys: no keyboard available");
+    return false;
+  }
+
+  struct xkb_keymap *keymap = xkb_state_get_keymap(keyboard->xkb_state);
+  uint32_t time_msec = get_current_time_msec();
+
+  wlr_log(WLR_DEBUG, "send_keys: sending '%s' to window '%s'", text, window_id);
+
+  // Find shift keycode for when we need it
+  xkb_keysym_t shift_sym = XKB_KEY_Shift_L;
+  bool dummy;
+  xkb_keycode_t shift_keycode =
+      find_keycode_for_keysym(keymap, keyboard->xkb_state, shift_sym, &dummy);
+
+  // Process each character
+  for (const char *c = text; *c; c++) {
+    xkb_keysym_t keysym;
+
+    // Handle special escape sequences
+    if (*c == '\\' && *(c + 1)) {
+      c++;
+      switch (*c) {
+      case 'n':
+        keysym = XKB_KEY_Return;
+        break;
+      case 't':
+        keysym = XKB_KEY_Tab;
+        break;
+      case 'e':
+        keysym = XKB_KEY_Escape;
+        break;
+      case '\\':
+        keysym = XKB_KEY_backslash;
+        break;
+      default:
+        keysym = xkb_utf32_to_keysym((uint32_t)*c);
+      }
+    } else {
+      // Convert UTF-8 character to keysym
+      keysym = xkb_utf32_to_keysym((uint32_t)(unsigned char)*c);
+    }
+
+    if (keysym == XKB_KEY_NoSymbol) {
+      wlr_log(WLR_DEBUG, "send_keys: no keysym for character '%c'", *c);
+      continue;
+    }
+
+    bool needs_shift = false;
+    xkb_keycode_t keycode =
+        find_keycode_for_keysym(keymap, keyboard->xkb_state, keysym, &needs_shift);
+
+    if (keycode == 0) {
+      wlr_log(WLR_DEBUG, "send_keys: no keycode for keysym 0x%x", keysym);
+      continue;
+    }
+
+    // keycode for wlr_seat_keyboard_notify_key needs to be evdev keycode
+    // (XKB keycode - 8)
+    uint32_t evdev_keycode = keycode - 8;
+
+    // Press shift if needed
+    if (needs_shift && shift_keycode != 0) {
+      wlr_seat_keyboard_notify_key(server->seat, time_msec++, shift_keycode - 8,
+                                   WL_KEYBOARD_KEY_STATE_PRESSED);
+    }
+
+    // Press the key
+    wlr_seat_keyboard_notify_key(server->seat, time_msec++, evdev_keycode,
+                                 WL_KEYBOARD_KEY_STATE_PRESSED);
+
+    // Release the key
+    wlr_seat_keyboard_notify_key(server->seat, time_msec++, evdev_keycode,
+                                 WL_KEYBOARD_KEY_STATE_RELEASED);
+
+    // Release shift if needed
+    if (needs_shift && shift_keycode != 0) {
+      wlr_seat_keyboard_notify_key(server->seat, time_msec++, shift_keycode - 8,
+                                   WL_KEYBOARD_KEY_STATE_RELEASED);
+    }
+  }
+
+  return true;
+}
+
 bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
   if (strncmp(cmd, "workspace ", 10) == 0) {
     int ws;
@@ -423,6 +592,10 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
       return true;
     }
     return false;
+  }
+
+  if (strncmp(cmd, "send_keys ", 10) == 0) {
+    return handle_send_keys(server, cmd + 10);
   }
 
   return false;
