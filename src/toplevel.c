@@ -99,8 +99,22 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 
     focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
 
-    const char *app_id = toplevel->xdg_toplevel->app_id;
-    ipc_broadcast_event(toplevel->server, "window_open", app_id ? app_id : "");
+    const char *app_id = toplevel->xdg_toplevel->app_id ? toplevel->xdg_toplevel->app_id : "";
+    const char *title = toplevel->xdg_toplevel->title ? toplevel->xdg_toplevel->title : "";
+    int width = toplevel->decoration ? toplevel->decoration->width : 0;
+    int height = toplevel->decoration ? toplevel->decoration->height : 0;
+
+    char event_data[512];
+    snprintf(event_data, sizeof(event_data),
+        "{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\",\"workspace\":%d,"
+        "\"geometry\":{\"x\":%.0f,\"y\":%.0f,\"width\":%d,\"height\":%d}}",
+        toplevel->window_id ? toplevel->window_id : "",
+        app_id, title,
+        toplevel->workspace->index + 1,
+        toplevel->logical_x, toplevel->logical_y,
+        width, height);
+
+    ipc_broadcast_event(toplevel->server, "window_open", event_data);
 }
 
 static void xdg_toplevel_maximize(struct wl_listener *listener, void *data) {
@@ -137,7 +151,10 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
     (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, unmap);
 
-    ipc_broadcast_event(toplevel->server, "window_close", NULL);
+    char event_data[256];
+    snprintf(event_data, sizeof(event_data), "{\"id\":\"%s\"}",
+        toplevel->window_id ? toplevel->window_id : "");
+    ipc_broadcast_event(toplevel->server, "window_close", event_data);
 
     if (toplevel->server->grabbed_toplevel == toplevel) {
         toplevel->server->grabbed_toplevel = NULL;
@@ -295,8 +312,11 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
                                        keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
     }
 
-    const char *app_id = toplevel->xdg_toplevel->app_id;
-    ipc_broadcast_event(server, "window_focus", app_id ? app_id : "");
+    char event_data[256];
+    snprintf(event_data, sizeof(event_data), "{\"id\":\"%s\",\"app_id\":\"%s\"}",
+        toplevel->window_id ? toplevel->window_id : "",
+        toplevel->xdg_toplevel->app_id ? toplevel->xdg_toplevel->app_id : "");
+    ipc_broadcast_event(server, "window_focus", event_data);
 }
 
 void kill_active_toplevel(struct planar_server *server) {
