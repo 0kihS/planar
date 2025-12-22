@@ -96,6 +96,29 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     }
     toplevel->window_id = generate_window_id(toplevel->server, toplevel->xdg_toplevel->app_id);
 
+    // Center new windows on the current output
+    if (toplevel->logical_x == 0 && toplevel->logical_y == 0) {
+        struct planar_server *server = toplevel->server;
+        struct wlr_output *output = wlr_output_layout_output_at(
+            server->output_layout, server->cursor->x, server->cursor->y);
+        if (output) {
+            struct wlr_box output_box;
+            wlr_output_layout_get_box(server->output_layout, output, &output_box);
+            
+            struct wlr_box geo_box = toplevel->xdg_toplevel->base->geometry;
+
+            double new_x = ((output_box.width / 2.0) - server->active_workspace->global_offset.x) / server->active_workspace->scale;
+            double new_y = ((output_box.height / 2.0) - server->active_workspace->global_offset.y) / server->active_workspace->scale;
+            
+            toplevel->logical_x = new_x - (geo_box.width / 2.0);
+            toplevel->logical_y = new_y - (geo_box.height / 2.0);
+
+            wlr_scene_node_set_position(&toplevel->container->node,
+                (int)(toplevel->logical_x * server->active_workspace->scale),
+                (int)(toplevel->logical_y * server->active_workspace->scale));
+        }
+    }
+
     toplevel->decoration = decoration_create(toplevel);
     if (toplevel->decoration) {
         decoration_update_geometry(toplevel->decoration);
