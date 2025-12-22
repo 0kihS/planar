@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <wlr/util/log.h>
 
@@ -214,6 +215,16 @@ static void handle_get_command(struct planar_server *server, int client_fd,
     handle_get_workspaces(server, client_fd);
   } else if (strcmp(setting, "focused") == 0) {
     handle_get_focused(server, client_fd);
+  } else if (strcmp(setting, "windows") == 0) {
+    handle_get_windows(server, client_fd);
+  } else if (strncmp(setting, "window", 6) == 0) {
+    const char *window_id = args + 7;
+    while (*window_id == ' ') window_id++;
+    if (*window_id) {
+      handle_get_window(server, client_fd, window_id);
+    } else {
+      send_response(client_fd, false, "missing window id");
+    }
   } else {
     send_response(client_fd, false, "unknown setting");
   }
@@ -301,6 +312,108 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
         server->settings.cursor_size = size;
         return true;
       }
+    }
+    return false;
+  }
+
+  if (strncmp(cmd, "focus_window ", 13) == 0) {
+    const char *window_id = cmd + 13;
+    struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+    if (toplevel) {
+      if (toplevel->workspace != server->active_workspace) {
+        switch_to_workspace(server, toplevel->workspace->index);
+      }
+      focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
+      return true;
+    }
+    return false;
+  }
+
+  if (strncmp(cmd, "close_window ", 13) == 0) {
+    const char *window_id = cmd + 13;
+    struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+    if (toplevel) {
+      wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
+      return true;
+    }
+    return false;
+  }
+
+  if (strncmp(cmd, "move_window ", 12) == 0) {
+    char window_id[256];
+    double x, y;
+    if (sscanf(cmd + 12, "%255s %lf %lf", window_id, &x, &y) == 3) {
+      struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+      if (toplevel) {
+        toplevel->logical_x = x;
+        toplevel->logical_y = y;
+        double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
+        wlr_scene_node_set_position(&toplevel->container->node,
+            (int)(x * scale), (int)(y * scale));
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (strncmp(cmd, "resize_window ", 14) == 0) {
+    char window_id[256];
+    int width, height;
+    if (sscanf(cmd + 14, "%255s %d %d", window_id, &width, &height) == 3) {
+      struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+      if (toplevel && width > 0 && height > 0) {
+        wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (strncmp(cmd, "move_window_to_workspace ", 25) == 0) {
+    char window_id[256];
+    int workspace_idx;
+    if (sscanf(cmd + 25, "%255s %d", window_id, &workspace_idx) == 2) {
+      struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+      if (toplevel && workspace_idx >= 1 && workspace_idx <= 9) {
+        struct planar_workspace *target_ws = NULL;
+        struct planar_workspace *ws;
+        wl_list_for_each(ws, &server->workspaces, link) {
+          if (ws->index == workspace_idx - 1) {
+            target_ws = ws;
+            break;
+          }
+        }
+        if (target_ws && target_ws != toplevel->workspace) {
+          wl_list_remove(&toplevel->link);
+          wl_list_insert(&target_ws->toplevels, &toplevel->link);
+          wlr_scene_node_reparent(&toplevel->container->node, target_ws->scene_tree);
+          toplevel->workspace = target_ws;
+          scale_toplevel(toplevel, target_ws->scale);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  if (strncmp(cmd, "spawn ", 6) == 0) {
+    const char *command = cmd + 6;
+    pid_t pid = fork();
+    if (pid == 0) {
+      setsid();
+      char *cmd_copy = strdup(command);
+      char *argv[64] = {0};
+      int argc = 0;
+      char *token = strtok(cmd_copy, " ");
+      while (token && argc < 63) {
+        argv[argc++] = token;
+        token = strtok(NULL, " ");
+      }
+      argv[argc] = NULL;
+      execvp(argv[0], argv);
+      _exit(1);
+    } else if (pid > 0) {
+      return true;
     }
     return false;
   }
