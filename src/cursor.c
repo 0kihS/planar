@@ -168,6 +168,10 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
 
     if (toplevel && toplevel->server) {
         if (surface) {
+            double scale = toplevel->workspace->scale;
+            sx /= scale;
+            sy /= scale;
+
             wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
             wlr_seat_pointer_notify_motion(seat, time, sx, sy);
         }
