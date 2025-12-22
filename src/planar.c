@@ -4,16 +4,20 @@
 #include <unistd.h>
 #include <signal.h>
 
+static struct planar_server *global_server = NULL;
+
 static void handle_signal(int signo) {
     (void)signo;
-    struct planar_server server;
-    server_finish(&server);
+    if (global_server && global_server->wl_display) {
+        wl_display_terminate(global_server->wl_display);
+    }
 }
 
 int main(void) {
     wlr_log_init(WLR_DEBUG, NULL);
 
     struct planar_server server = {0};
+    global_server = &server;
     server_init(&server);
 
 	setenv("WAYLAND_DISPLAY", server.socket, true);

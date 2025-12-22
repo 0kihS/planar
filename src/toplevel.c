@@ -98,6 +98,11 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
     (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, unmap);
 
+    if (toplevel->server->grabbed_toplevel == toplevel) {
+        toplevel->server->grabbed_toplevel = NULL;
+        toplevel->server->cursor_mode = PLANAR_CURSOR_PASSTHROUGH;
+    }
+
     if (toplevel->decoration) {
         decoration_destroy(toplevel->decoration);
         toplevel->decoration = NULL;

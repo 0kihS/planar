@@ -88,6 +88,9 @@ static struct planar_toplevel *desktop_toplevel_at(
 	while (tree != NULL && tree->node.data == NULL) {
 		tree = tree->node.parent;
 	}
+	if (tree == NULL) {
+		return NULL;
+	}
 	return tree->node.data;
 }
 
