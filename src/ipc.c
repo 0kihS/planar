@@ -652,6 +652,19 @@ static int ipc_client_handler(int fd, uint32_t mask, void *data) {
   return 0;
 }
 
+static int ipc_event_client_handler(int fd, uint32_t mask, void *data) {
+  struct ipc_client *client = data;
+  (void)fd;
+
+  if (mask & WL_EVENT_ERROR || mask & WL_EVENT_HANGUP) {
+    wlr_log(WLR_DEBUG, "Event client disconnected");
+    ipc_client_destroy(client);
+    return 0;
+  }
+
+  return 0;
+}
+
 static int ipc_socket_handler(int fd, uint32_t mask, void *data) {
   struct planar_server *server = data;
 
@@ -701,7 +714,10 @@ static int ipc_event_socket_handler(int fd, uint32_t mask, void *data) {
     struct ipc_client *client = calloc(1, sizeof(*client));
     client->fd = client_fd;
     client->server = server;
-    client->event_source = NULL;
+
+    struct wl_event_loop *loop = wl_display_get_event_loop(server->wl_display);
+    client->event_source = wl_event_loop_add_fd(
+        loop, client_fd, 0, ipc_event_client_handler, client);
 
     wl_list_insert(&server->ipc_event_clients, &client->link);
     wlr_log(WLR_DEBUG, "New event subscriber connected");
@@ -791,9 +807,7 @@ void ipc_finish(struct planar_server *server) {
   }
 
   wl_list_for_each_safe(client, tmp, &server->ipc_event_clients, link) {
-    wl_list_remove(&client->link);
-    close(client->fd);
-    free(client);
+    ipc_client_destroy(client);
   }
 
   if (server->ipc_event_source) {
@@ -834,12 +848,8 @@ void ipc_broadcast_event(struct planar_server *server, const char *event_type,
 
   struct ipc_client *client, *tmp;
   wl_list_for_each_safe(client, tmp, &server->ipc_event_clients, link) {
-    ssize_t written = write(client->fd, buf, len);
-    if (written < 0) {
+    if (write(client->fd, buf, len) < 0) {
       wlr_log(WLR_DEBUG, "Event client disconnected");
-      wl_list_remove(&client->link);
-      close(client->fd);
-      free(client);
     }
   }
 }
