@@ -24,6 +24,7 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "  resize_window <id> <W> <H>  Resize window\n");
     fprintf(stderr, "  move_window_to_workspace <id> <N>\n");
     fprintf(stderr, "                              Move window to workspace N\n");
+    fprintf(stderr, "  zoom <scale>                Set workspace zoom level\n");
     fprintf(stderr, "  spawn <command>             Spawn a process\n");
     fprintf(stderr, "  set <setting> <value>       Set a runtime setting\n");
     fprintf(stderr, "  get <setting>               Get a runtime setting\n");

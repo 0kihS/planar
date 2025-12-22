@@ -3,7 +3,6 @@
 #include "cursor.h"
 #include "input.h"
 #include "ipc.h"
-#include "keyboard.h"
 #include "layers.h"
 #include "output.h"
 #include "popup.h"

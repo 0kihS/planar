@@ -40,11 +40,6 @@ static const char *cursor_name_for_edges(uint32_t edges) {
     }
 }
 
-// Check if cursor is over any toplevel's decoration
-// Returns the toplevel if found, and sets edge_result:
-//   0 = on titlebar (move)
-//   1 = on border (resize, edges set)
-//  -1 = not on decoration
 static struct planar_toplevel *toplevel_decoration_at(
         struct planar_server *server, double lx, double ly,
         int *edge_result, uint32_t *edges) {

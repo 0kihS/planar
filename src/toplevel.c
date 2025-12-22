@@ -1,6 +1,5 @@
 #include "toplevel.h"
 #include "server.h"
-#include "cursor.h"
 #include "workspaces.h"
 #include "decoration.h"
 #include "ipc.h"

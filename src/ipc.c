@@ -1,11 +1,9 @@
 #include "ipc.h"
-#include "config.h"
 #include "server.h"
 #include "toplevel.h"
 #include "workspaces.h"
 #include "decoration.h"
 
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -413,6 +411,15 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
       execvp(argv[0], argv);
       _exit(1);
     } else if (pid > 0) {
+      return true;
+    }
+    return false;
+  }
+
+  if (strncmp(cmd, "zoom ", 5) == 0) {
+    double scale;
+    if (sscanf(cmd + 5, "%lf", &scale) == 1) {
+      update_workspace_scale(server, scale, server->cursor->x, server->cursor->y);
       return true;
     }
     return false;
