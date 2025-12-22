@@ -3,6 +3,7 @@
 #include "server.h"
 #include "toplevel.h"
 #include "workspaces.h"
+#include "decoration.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -66,6 +67,82 @@ static void handle_get_workspaces(struct planar_server *server, int client_fd) {
   send_response(client_fd, true, buf);
 }
 
+static void handle_get_windows(struct planar_server *server, int client_fd) {
+  char buf[IPC_BUFFER_SIZE * 4];
+  char *ptr = buf;
+  int remaining = sizeof(buf);
+  int written;
+
+  struct wlr_surface *focused_surface = server->seat->keyboard_state.focused_surface;
+
+  written = snprintf(ptr, remaining, "[");
+  ptr += written;
+  remaining -= written;
+
+  bool first = true;
+  struct planar_workspace *ws;
+  wl_list_for_each(ws, &server->workspaces, link) {
+    struct planar_toplevel *toplevel;
+    wl_list_for_each(toplevel, &ws->toplevels, link) {
+      if (!toplevel->xdg_toplevel->base->surface->mapped) continue;
+
+      const char *app_id = toplevel->xdg_toplevel->app_id ? toplevel->xdg_toplevel->app_id : "";
+      const char *title = toplevel->xdg_toplevel->title ? toplevel->xdg_toplevel->title : "";
+      int width = toplevel->decoration ? toplevel->decoration->width : 0;
+      int height = toplevel->decoration ? toplevel->decoration->height : 0;
+      bool is_focused = (toplevel->xdg_toplevel->base->surface == focused_surface);
+
+      written = snprintf(ptr, remaining,
+          "%s{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\","
+          "\"workspace\":%d,\"geometry\":{\"x\":%.0f,\"y\":%.0f,"
+          "\"width\":%d,\"height\":%d},\"focused\":%s}",
+          first ? "" : ",",
+          toplevel->window_id ? toplevel->window_id : "",
+          app_id, title,
+          ws->index + 1,
+          toplevel->logical_x, toplevel->logical_y,
+          width, height,
+          is_focused ? "true" : "false");
+
+      ptr += written;
+      remaining -= written;
+      first = false;
+    }
+  }
+
+  snprintf(ptr, remaining, "]");
+  send_response(client_fd, true, buf);
+}
+
+static void handle_get_window(struct planar_server *server, int client_fd, const char *window_id) {
+  struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+  if (!toplevel) {
+    send_response(client_fd, false, "window not found");
+    return;
+  }
+
+  struct wlr_surface *focused_surface = server->seat->keyboard_state.focused_surface;
+  const char *app_id = toplevel->xdg_toplevel->app_id ? toplevel->xdg_toplevel->app_id : "";
+  const char *title = toplevel->xdg_toplevel->title ? toplevel->xdg_toplevel->title : "";
+  int width = toplevel->decoration ? toplevel->decoration->width : 0;
+  int height = toplevel->decoration ? toplevel->decoration->height : 0;
+  bool is_focused = (toplevel->xdg_toplevel->base->surface == focused_surface);
+
+  char buf[IPC_BUFFER_SIZE];
+  snprintf(buf, sizeof(buf),
+      "{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\","
+      "\"workspace\":%d,\"geometry\":{\"x\":%.0f,\"y\":%.0f,"
+      "\"width\":%d,\"height\":%d},\"focused\":%s}",
+      toplevel->window_id ? toplevel->window_id : "",
+      app_id, title,
+      toplevel->workspace->index + 1,
+      toplevel->logical_x, toplevel->logical_y,
+      width, height,
+      is_focused ? "true" : "false");
+
+  send_response(client_fd, true, buf);
+}
+
 static void handle_get_focused(struct planar_server *server, int client_fd) {
   struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
   if (!focused) {
@@ -73,16 +150,34 @@ static void handle_get_focused(struct planar_server *server, int client_fd) {
     return;
   }
 
-  struct wlr_xdg_toplevel *xdg = wlr_xdg_toplevel_try_from_wlr_surface(focused);
-  if (!xdg) {
-    send_response(client_fd, true, "null");
-    return;
+  struct planar_workspace *ws;
+  wl_list_for_each(ws, &server->workspaces, link) {
+    struct planar_toplevel *toplevel;
+    wl_list_for_each(toplevel, &ws->toplevels, link) {
+      if (toplevel->xdg_toplevel->base->surface == focused) {
+        const char *app_id = toplevel->xdg_toplevel->app_id ? toplevel->xdg_toplevel->app_id : "";
+        const char *title = toplevel->xdg_toplevel->title ? toplevel->xdg_toplevel->title : "";
+        int width = toplevel->decoration ? toplevel->decoration->width : 0;
+        int height = toplevel->decoration ? toplevel->decoration->height : 0;
+
+        char buf[IPC_BUFFER_SIZE];
+        snprintf(buf, sizeof(buf),
+            "{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\","
+            "\"workspace\":%d,\"geometry\":{\"x\":%.0f,\"y\":%.0f,"
+            "\"width\":%d,\"height\":%d}}",
+            toplevel->window_id ? toplevel->window_id : "",
+            app_id, title,
+            ws->index + 1,
+            toplevel->logical_x, toplevel->logical_y,
+            width, height);
+
+        send_response(client_fd, true, buf);
+        return;
+      }
+    }
   }
 
-  char buf[IPC_BUFFER_SIZE];
-  snprintf(buf, sizeof(buf), "{\"app_id\":\"%s\",\"title\":\"%s\"}",
-           xdg->app_id ? xdg->app_id : "", xdg->title ? xdg->title : "");
-  send_response(client_fd, true, buf);
+  send_response(client_fd, true, "null");
 }
 
 static void handle_get_command(struct planar_server *server, int client_fd,

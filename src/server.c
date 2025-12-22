@@ -210,6 +210,12 @@ void server_init(struct planar_server *server) {
     server->settings.zoom_step = 0.1;
     server->settings.cursor_size = 24;
 
+    /* Initialize window ID tracker */
+    server->window_id_tracker.app_ids = NULL;
+    server->window_id_tracker.counters = NULL;
+    server->window_id_tracker.count = 0;
+    server->window_id_tracker.capacity = 0;
+
     /* Initialize IPC */
     if (!ipc_init(server)) {
         wlr_log(WLR_ERROR, "Failed to initialize IPC");
@@ -239,6 +245,14 @@ void server_finish(struct planar_server *server) {
     wl_list_remove(&server->new_xdg_toplevel.link);
     wl_list_remove(&server->new_xdg_popup.link);
     wl_list_remove(&server->new_layer_shell_surface.link);
+
+    /* Cleanup window ID tracker */
+    for (size_t i = 0; i < server->window_id_tracker.count; i++) {
+        free(server->window_id_tracker.app_ids[i]);
+    }
+    free(server->window_id_tracker.app_ids);
+    free(server->window_id_tracker.counters);
+
     struct planar_workspace *workspace, *tmp_ws;
     wl_list_for_each_safe(workspace, tmp_ws, &server->workspaces, link) {
         wl_list_remove(&workspace->link);

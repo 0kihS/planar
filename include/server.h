@@ -100,6 +100,13 @@ struct planar_server {
 		double zoom_step;
 		int cursor_size;
 	} settings;
+
+	struct {
+		char **app_ids;
+		uint32_t *counters;
+		size_t count;
+		size_t capacity;
+	} window_id_tracker;
 };
 
 void convert_scene_coords_to_global(struct planar_server *server, double *x, double *y);

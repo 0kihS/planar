@@ -6,8 +6,53 @@
 #include "ipc.h"
 
 #include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
+
+static uint32_t allocate_window_instance(struct planar_server *server, const char *app_id) {
+    const char *key = app_id ? app_id : "unknown";
+
+    for (size_t i = 0; i < server->window_id_tracker.count; i++) {
+        if (strcmp(server->window_id_tracker.app_ids[i], key) == 0) {
+            return ++server->window_id_tracker.counters[i];
+        }
+    }
+
+    if (server->window_id_tracker.count >= server->window_id_tracker.capacity) {
+        size_t new_cap = server->window_id_tracker.capacity == 0 ? 16 : server->window_id_tracker.capacity * 2;
+        server->window_id_tracker.app_ids = realloc(server->window_id_tracker.app_ids, new_cap * sizeof(char *));
+        server->window_id_tracker.counters = realloc(server->window_id_tracker.counters, new_cap * sizeof(uint32_t));
+        server->window_id_tracker.capacity = new_cap;
+    }
+
+    size_t idx = server->window_id_tracker.count++;
+    server->window_id_tracker.app_ids[idx] = strdup(key);
+    server->window_id_tracker.counters[idx] = 0;
+    return 0;
+}
+
+static char *generate_window_id(struct planar_server *server, const char *app_id) {
+    const char *key = app_id ? app_id : "unknown";
+    uint32_t instance = allocate_window_instance(server, app_id);
+    char *id = malloc(strlen(key) + 16);
+    sprintf(id, "%s:%u", key, instance);
+    return id;
+}
+
+struct planar_toplevel *find_toplevel_by_id(struct planar_server *server, const char *window_id) {
+    struct planar_workspace *ws;
+    wl_list_for_each(ws, &server->workspaces, link) {
+        struct planar_toplevel *toplevel;
+        wl_list_for_each(toplevel, &ws->toplevels, link) {
+            if (toplevel->window_id && strcmp(toplevel->window_id, window_id) == 0) {
+                return toplevel;
+            }
+        }
+    }
+    return NULL;
+}
 
 static void begin_interactive(struct planar_toplevel *toplevel,
         enum planar_cursor_mode mode, uint32_t edges) {
@@ -140,6 +185,7 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
     wl_list_remove(&toplevel->request_resize.link);
     wl_list_remove(&toplevel->request_maximize.link);
     wl_list_remove(&toplevel->request_fullscreen.link);
+    free(toplevel->window_id);
     free(toplevel);
 }
 
@@ -194,6 +240,9 @@ void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 
     toplevel->logical_x = 0;
     toplevel->logical_y = 0;
+
+    toplevel->window_id = generate_window_id(server, xdg_toplevel->app_id);
+    toplevel->instance_number = 0;
 
     wlr_scene_node_set_enabled(&toplevel->container->node, true);
 
