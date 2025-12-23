@@ -2,5 +2,5 @@ Infinite canvas based wayland compositor, based on wlroots. Currently includes s
 
 (old) video of planar in action
 
-https://github.com/user-attachments/assets/0164bdb0-f78d-49d4-9bd4-092f806043cf
+https://github.com/user-attachments/assets/fb8c2155-425d-4ef5-ab65-1374d1667eef
 
