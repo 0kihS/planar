@@ -62,7 +62,9 @@ void decoration_destroy(struct planar_decoration *decoration) {
 }
 
 void decoration_update_geometry(struct planar_decoration *decoration) {
-    decoration_update_geometry_scaled(decoration, 1.0);
+    if (!decoration || !decoration->toplevel) return;
+    double scale = decoration->toplevel->workspace ? decoration->toplevel->workspace->scale : 1.0;
+    decoration_update_geometry_scaled(decoration, scale);
 }
 
 void decoration_update_geometry_scaled(struct planar_decoration *decoration, double scale) {

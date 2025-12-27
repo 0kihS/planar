@@ -89,12 +89,17 @@ static void begin_interactive(struct planar_toplevel *toplevel,
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, map);
+    struct planar_server *server = toplevel->server;
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
 
     if (toplevel->window_id) {
         free(toplevel->window_id);
     }
-    toplevel->window_id = generate_window_id(toplevel->server, toplevel->xdg_toplevel->app_id);
+    toplevel->window_id = generate_window_id(server, toplevel->xdg_toplevel->app_id);
+
+    struct wlr_box geo_box = toplevel->xdg_toplevel->base->geometry;
+    toplevel->base_width = geo_box.width;
+    toplevel->base_height = geo_box.height;
 
     // Center new windows on the current output
     if (toplevel->logical_x == 0 && toplevel->logical_y == 0) {
@@ -199,17 +204,17 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
     (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
+
     if (toplevel->xdg_toplevel->base->initial_commit) {
         wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
     }
 
-    if (toplevel->decoration) {
-        decoration_update_geometry(toplevel->decoration);
-    }
+    struct wlr_box geo = toplevel->xdg_toplevel->base->geometry;
+    toplevel->base_width = geo.width;
+    toplevel->base_height = geo.height;
+    double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
 
-    if (toplevel->workspace && toplevel->workspace->scale != 1.0) {
-        scale_toplevel(toplevel, toplevel->workspace->scale);
-    }
+    scale_toplevel(toplevel, scale);
 }
 
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {

@@ -17,6 +17,7 @@ struct planar_toplevel {
     struct planar_workspace *workspace;
     struct planar_decoration *decoration;
     double logical_x, logical_y;
+    int base_width, base_height;
 
     char *window_id;            // Composite ID like "firefox:0"
     uint32_t instance_number;   // Instance number for this app_id
