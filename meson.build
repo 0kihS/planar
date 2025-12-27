@@ -74,6 +74,7 @@ src_files = files(
 	'src/config.c',
 	'src/cursor.c',
 	'src/decoration.c',
+	'src/group.c',
 	'src/input.c',
 	'src/ipc.c',
 	'src/keyboard.c',

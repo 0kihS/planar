@@ -50,6 +50,8 @@ struct planar_server {
     struct wl_list workspaces;
     struct planar_workspace *active_workspace;
 
+    struct wl_list groups;
+
     struct config *config;
 
 	struct wlr_cursor *cursor;

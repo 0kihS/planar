@@ -1,6 +1,7 @@
 #include "decoration.h"
 #include "toplevel.h"
 #include "server.h"
+#include "group.h"
 
 #include <stdlib.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -14,8 +15,13 @@ static int get_border_width(struct planar_toplevel *toplevel) {
 
 static const float *get_border_color(struct planar_toplevel *toplevel) {
     static const float fallback[4] = {0.3f, 0.3f, 0.3f, 1.0f};
-    if (toplevel && toplevel->server) {
-        return toplevel->server->settings.border_color;
+    if (toplevel) {
+        if (toplevel->group) {
+            return toplevel->group->border_color;
+        }
+        if (toplevel->server) {
+            return toplevel->server->settings.border_color;
+        }
     }
     return fallback;
 }

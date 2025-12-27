@@ -7,6 +7,7 @@
 #include "workspaces.h"
 
 struct planar_decoration;
+struct planar_group;
 
 struct planar_toplevel {
     struct wl_list link;
@@ -16,11 +17,12 @@ struct planar_toplevel {
     struct wlr_scene_tree *scene_tree; // The actual xdg surface tree
     struct planar_workspace *workspace;
     struct planar_decoration *decoration;
+    struct planar_group *group;
     double logical_x, logical_y;
     int base_width, base_height;
 
-    char *window_id;            // Composite ID like "firefox:0"
-    uint32_t instance_number;   // Instance number for this app_id
+    char *window_id;
+    uint32_t instance_number;
 
     struct wl_listener map;
     struct wl_listener unmap;

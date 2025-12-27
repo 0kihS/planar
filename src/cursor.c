@@ -4,6 +4,7 @@
 #include "output.h"
 #include "layers.h"
 #include "decoration.h"
+#include "group.h"
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -190,12 +191,22 @@ void process_cursor_move(struct planar_server *server, uint32_t time) {
     double new_node_x = server->cursor->x - server->grab_x;
     double new_node_y = server->cursor->y - server->grab_y;
     double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
-    toplevel->logical_x = new_node_x / scale;
-    toplevel->logical_y = new_node_y / scale;
 
-    wlr_scene_node_set_position(&toplevel->container->node,
-        toplevel->logical_x * scale,
-        toplevel->logical_y * scale);
+    double new_logical_x = new_node_x / scale;
+    double new_logical_y = new_node_y / scale;
+
+    if (toplevel->group) {
+        double delta_x = new_logical_x - toplevel->logical_x;
+        double delta_y = new_logical_y - toplevel->logical_y;
+        group_move_by(toplevel->group, delta_x, delta_y);
+    } else {
+        toplevel->logical_x = new_logical_x;
+        toplevel->logical_y = new_logical_y;
+
+        wlr_scene_node_set_position(&toplevel->container->node,
+            toplevel->logical_x * scale,
+            toplevel->logical_y * scale);
+    }
 }
 
 void process_cursor_resize(struct planar_server *server, uint32_t time) {

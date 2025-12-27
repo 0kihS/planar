@@ -3,6 +3,7 @@
 #include "workspaces.h"
 #include "decoration.h"
 #include "ipc.h"
+#include "group.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -220,6 +221,8 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
     (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, destroy);
+
+    group_remove_toplevel_from_any(toplevel->server, toplevel);
 
     if (toplevel->decoration) {
         decoration_destroy(toplevel->decoration);

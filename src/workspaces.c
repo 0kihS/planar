@@ -3,6 +3,7 @@
 #include "toplevel.h"
 #include "output.h"
 #include "ipc.h"
+#include "group.h"
 #include <stdio.h>
 
 void set_workspace_offset(struct planar_server *server, int offset_x, int offset_y) {
@@ -86,11 +87,14 @@ void active_toplevel_to_workspace(struct planar_server *server, int index) {
         return;
     }
 
-    wl_list_remove(&toplevel->link);
-
-    wl_list_insert(&new_workspace->toplevels, &toplevel->link);
-    toplevel->workspace = new_workspace;
-    wlr_scene_node_reparent(&toplevel->container->node, new_workspace->scene_tree);
+    if (toplevel->group) {
+        group_move_to_workspace(toplevel->group, new_workspace);
+    } else {
+        wl_list_remove(&toplevel->link);
+        wl_list_insert(&new_workspace->toplevels, &toplevel->link);
+        toplevel->workspace = new_workspace;
+        wlr_scene_node_reparent(&toplevel->container->node, new_workspace->scene_tree);
+    }
 }
 
 void update_workspace_scale(struct planar_server *server, double scale, double pivot_x, double pivot_y) {

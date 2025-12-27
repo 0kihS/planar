@@ -3,6 +3,7 @@
 #include "toplevel.h"
 #include "workspaces.h"
 #include "decoration.h"
+#include "group.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -93,17 +94,21 @@ static void handle_get_windows(struct planar_server *server, int client_fd) {
       int height = toplevel->decoration ? toplevel->decoration->height : 0;
       bool is_focused = (toplevel->xdg_toplevel->base->surface == focused_surface);
 
+      const char *group_id = toplevel->group ? toplevel->group->group_id : NULL;
       written = snprintf(ptr, remaining,
           "%s{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\","
           "\"workspace\":%d,\"geometry\":{\"x\":%.0f,\"y\":%.0f,"
-          "\"width\":%d,\"height\":%d},\"focused\":%s}",
+          "\"width\":%d,\"height\":%d},\"focused\":%s,\"group\":%s%s%s}",
           first ? "" : ",",
           toplevel->window_id ? toplevel->window_id : "",
           app_id, title,
           ws->index + 1,
           toplevel->logical_x, toplevel->logical_y,
           width, height,
-          is_focused ? "true" : "false");
+          is_focused ? "true" : "false",
+          group_id ? "\"" : "",
+          group_id ? group_id : "null",
+          group_id ? "\"" : "");
 
       ptr += written;
       remaining -= written;
@@ -128,18 +133,22 @@ static void handle_get_window(struct planar_server *server, int client_fd, const
   int width = toplevel->decoration ? toplevel->decoration->width : 0;
   int height = toplevel->decoration ? toplevel->decoration->height : 0;
   bool is_focused = (toplevel->xdg_toplevel->base->surface == focused_surface);
+  const char *group_id = toplevel->group ? toplevel->group->group_id : NULL;
 
   char buf[IPC_BUFFER_SIZE];
   snprintf(buf, sizeof(buf),
       "{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\","
       "\"workspace\":%d,\"geometry\":{\"x\":%.0f,\"y\":%.0f,"
-      "\"width\":%d,\"height\":%d},\"focused\":%s}",
+      "\"width\":%d,\"height\":%d},\"focused\":%s,\"group\":%s%s%s}",
       toplevel->window_id ? toplevel->window_id : "",
       app_id, title,
       toplevel->workspace->index + 1,
       toplevel->logical_x, toplevel->logical_y,
       width, height,
-      is_focused ? "true" : "false");
+      is_focused ? "true" : "false",
+      group_id ? "\"" : "",
+      group_id ? group_id : "null",
+      group_id ? "\"" : "");
 
   send_response(client_fd, true, buf);
 }
@@ -179,6 +188,90 @@ static void handle_get_focused(struct planar_server *server, int client_fd) {
   }
 
   send_response(client_fd, true, "null");
+}
+
+static void handle_get_groups(struct planar_server *server, int client_fd) {
+  char buf[IPC_BUFFER_SIZE * 2];
+  char *ptr = buf;
+  int remaining = sizeof(buf);
+  int written;
+
+  written = snprintf(ptr, remaining, "[");
+  ptr += written;
+  remaining -= written;
+
+  bool first = true;
+  struct planar_group *group;
+  wl_list_for_each(group, &server->groups, link) {
+    written = snprintf(ptr, remaining,
+        "%s{\"id\":\"%s\",\"member_count\":%d,\"color\":[%.2f,%.2f,%.2f,%.2f],\"members\":[",
+        first ? "" : ",",
+        group->group_id,
+        group_member_count(group),
+        group->border_color[0], group->border_color[1],
+        group->border_color[2], group->border_color[3]);
+    ptr += written;
+    remaining -= written;
+
+    bool first_member = true;
+    struct planar_group_member *member;
+    wl_list_for_each(member, &group->members, link) {
+      if (member->toplevel && member->toplevel->window_id) {
+        written = snprintf(ptr, remaining, "%s\"%s\"",
+            first_member ? "" : ",",
+            member->toplevel->window_id);
+        ptr += written;
+        remaining -= written;
+        first_member = false;
+      }
+    }
+
+    written = snprintf(ptr, remaining, "]}");
+    ptr += written;
+    remaining -= written;
+    first = false;
+  }
+
+  snprintf(ptr, remaining, "]");
+  send_response(client_fd, true, buf);
+}
+
+static void handle_get_group(struct planar_server *server, int client_fd, const char *group_id) {
+  struct planar_group *group = find_group_by_id(server, group_id);
+  if (!group) {
+    send_response(client_fd, false, "group not found");
+    return;
+  }
+
+  char buf[IPC_BUFFER_SIZE];
+  char *ptr = buf;
+  int remaining = sizeof(buf);
+  int written;
+
+  written = snprintf(ptr, remaining,
+      "{\"id\":\"%s\",\"member_count\":%d,\"color\":[%.2f,%.2f,%.2f,%.2f],\"members\":[",
+      group->group_id,
+      group_member_count(group),
+      group->border_color[0], group->border_color[1],
+      group->border_color[2], group->border_color[3]);
+  ptr += written;
+  remaining -= written;
+
+  bool first = true;
+  struct planar_group_member *member;
+  wl_list_for_each(member, &group->members, link) {
+    if (member->toplevel && member->toplevel->window_id) {
+      written = snprintf(ptr, remaining, "%s\"%s\"",
+          first ? "" : ",",
+          member->toplevel->window_id);
+      ptr += written;
+      remaining -= written;
+      first = false;
+    }
+  }
+
+  snprintf(ptr, remaining, "]}");
+  send_response(client_fd, true, buf);
 }
 
 static void handle_get_command(struct planar_server *server, int client_fd,
@@ -224,6 +317,16 @@ static void handle_get_command(struct planar_server *server, int client_fd,
       handle_get_window(server, client_fd, window_id);
     } else {
       send_response(client_fd, false, "missing window id");
+    }
+  } else if (strcmp(setting, "groups") == 0) {
+    handle_get_groups(server, client_fd);
+  } else if (strncmp(setting, "group", 5) == 0) {
+    const char *group_id = args + 6;
+    while (*group_id == ' ') group_id++;
+    if (*group_id) {
+      handle_get_group(server, client_fd, group_id);
+    } else {
+      send_response(client_fd, false, "missing group id");
     }
   } else {
     send_response(client_fd, false, "unknown setting");
@@ -551,11 +654,15 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
           }
         }
         if (target_ws && target_ws != toplevel->workspace) {
-          wl_list_remove(&toplevel->link);
-          wl_list_insert(&target_ws->toplevels, &toplevel->link);
-          wlr_scene_node_reparent(&toplevel->container->node, target_ws->scene_tree);
-          toplevel->workspace = target_ws;
-          scale_toplevel(toplevel, target_ws->scale);
+          if (toplevel->group) {
+            group_move_to_workspace(toplevel->group, target_ws);
+          } else {
+            wl_list_remove(&toplevel->link);
+            wl_list_insert(&target_ws->toplevels, &toplevel->link);
+            wlr_scene_node_reparent(&toplevel->container->node, target_ws->scene_tree);
+            toplevel->workspace = target_ws;
+            scale_toplevel(toplevel, target_ws->scale);
+          }
           return true;
         }
       }
@@ -596,6 +703,87 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
 
   if (strncmp(cmd, "send_keys ", 10) == 0) {
     return handle_send_keys(server, cmd + 10);
+  }
+
+  if (strncmp(cmd, "group ", 6) == 0) {
+    const char *subcmd = cmd + 6;
+
+    if (strncmp(subcmd, "create", 6) == 0) {
+      const char *name = subcmd + 6;
+      while (*name == ' ') name++;
+      struct planar_group *group = group_create(server, *name ? name : NULL);
+      return group != NULL;
+    }
+
+    if (strncmp(subcmd, "delete ", 7) == 0) {
+      const char *group_id = subcmd + 7;
+      struct planar_group *group = find_group_by_id(server, group_id);
+      if (group) {
+        group_destroy(group);
+        return true;
+      }
+      return false;
+    }
+
+    if (strncmp(subcmd, "add ", 4) == 0) {
+      char group_id[256], window_id[256];
+      if (sscanf(subcmd + 4, "%255s %255s", group_id, window_id) == 2) {
+        struct planar_group *group = find_group_by_id(server, group_id);
+        struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+        if (group && toplevel) {
+          return group_add_toplevel(group, toplevel);
+        }
+      }
+      return false;
+    }
+
+    if (strncmp(subcmd, "remove ", 7) == 0) {
+      char group_id[256], window_id[256];
+      if (sscanf(subcmd + 7, "%255s %255s", group_id, window_id) == 2) {
+        struct planar_group *group = find_group_by_id(server, group_id);
+        struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+        if (group && toplevel) {
+          bool result = group_remove_toplevel(group, toplevel);
+          if (group_is_empty(group)) {
+            group_destroy(group);
+          }
+          return result;
+        }
+      }
+      return false;
+    }
+
+    if (strncmp(subcmd, "move ", 5) == 0) {
+      char group_id[256];
+      double x, y;
+      if (sscanf(subcmd + 5, "%255s %lf %lf", group_id, &x, &y) == 3) {
+        struct planar_group *group = find_group_by_id(server, group_id);
+        if (group) {
+          group_move_to(group, x, y);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    if (strncmp(subcmd, "color ", 6) == 0) {
+      char group_id[256];
+      float r, g, b, a;
+      if (sscanf(subcmd + 6, "%255s %f %f %f %f", group_id, &r, &g, &b, &a) == 5) {
+        struct planar_group *group = find_group_by_id(server, group_id);
+        if (group) {
+          group->border_color[0] = r;
+          group->border_color[1] = g;
+          group->border_color[2] = b;
+          group->border_color[3] = a;
+          group_update_decorations(group);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    return false;
   }
 
   return false;

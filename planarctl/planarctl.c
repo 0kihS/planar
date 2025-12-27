@@ -29,6 +29,17 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "  send_keys <id> <text>       Send keystrokes to window\n");
     fprintf(stderr, "  set <setting> <value>       Set a runtime setting\n");
     fprintf(stderr, "  get <setting>               Get a runtime setting\n");
+    fprintf(stderr, "\nGroup Commands:\n");
+    fprintf(stderr, "  group create [name]         Create a group (auto-generates ID if no name)\n");
+    fprintf(stderr, "  group delete <group_id>     Delete a group\n");
+    fprintf(stderr, "  group add <group_id> <window_id>\n");
+    fprintf(stderr, "                              Add window to group\n");
+    fprintf(stderr, "  group remove <group_id> <window_id>\n");
+    fprintf(stderr, "                              Remove window from group\n");
+    fprintf(stderr, "  group move <group_id> <X> <Y>\n");
+    fprintf(stderr, "                              Move entire group to position\n");
+    fprintf(stderr, "  group color <group_id> <R G B A>\n");
+    fprintf(stderr, "                              Set group border color\n");
     fprintf(stderr, "\nSettings:\n");
     fprintf(stderr, "  border_width <N>            Border width in pixels (0-32)\n");
     fprintf(stderr, "  border_color <R G B A>      Border color (floats 0.0-1.0)\n");
@@ -40,6 +51,17 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "  focused                     Get focused window info (get only)\n");
     fprintf(stderr, "  windows                     List all windows (get only)\n");
     fprintf(stderr, "  window <id>                 Get window info (get only)\n");
+    fprintf(stderr, "  groups                      List all groups (get only)\n");
+    fprintf(stderr, "  group <id>                  Get group info (get only)\n");
+    fprintf(stderr, "\nEvents (with -e flag):\n");
+    fprintf(stderr, "  workspace                   Workspace switched\n");
+    fprintf(stderr, "  window_open                 Window opened\n");
+    fprintf(stderr, "  window_close                Window closed\n");
+    fprintf(stderr, "  window_focus                Window focused\n");
+    fprintf(stderr, "  group_create                Group created\n");
+    fprintf(stderr, "  group_delete                Group deleted\n");
+    fprintf(stderr, "  group_add                   Window added to group\n");
+    fprintf(stderr, "  group_remove                Window removed from group\n");
 }
 
 static int connect_socket(const char *path) {
