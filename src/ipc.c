@@ -4,6 +4,7 @@
 #include "workspaces.h"
 #include "decoration.h"
 #include "group.h"
+#include "selection.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -274,6 +275,33 @@ static void handle_get_group(struct planar_server *server, int client_fd, const 
   send_response(client_fd, true, buf);
 }
 
+static void handle_get_selection(struct planar_server *server, int client_fd) {
+  char buf[IPC_BUFFER_SIZE];
+  char *ptr = buf;
+  int remaining = sizeof(buf);
+  int written;
+
+  written = snprintf(ptr, remaining, "[");
+  ptr += written;
+  remaining -= written;
+
+  bool first = true;
+  struct planar_selection_entry *entry;
+  wl_list_for_each(entry, &server->selected_toplevels, link) {
+    if (entry->toplevel && entry->toplevel->window_id) {
+      written = snprintf(ptr, remaining, "%s\"%s\"",
+          first ? "" : ",",
+          entry->toplevel->window_id);
+      ptr += written;
+      remaining -= written;
+      first = false;
+    }
+  }
+
+  snprintf(ptr, remaining, "]");
+  send_response(client_fd, true, buf);
+}
+
 static void handle_get_command(struct planar_server *server, int client_fd,
                                const char *args) {
   char setting[64];
@@ -328,6 +356,8 @@ static void handle_get_command(struct planar_server *server, int client_fd,
     } else {
       send_response(client_fd, false, "missing group id");
     }
+  } else if (strcmp(setting, "selection") == 0) {
+    handle_get_selection(server, client_fd);
   } else {
     send_response(client_fd, false, "unknown setting");
   }
@@ -783,7 +813,69 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
       return false;
     }
 
+    if (strcmp(subcmd, "create_from_selection") == 0) {
+      struct planar_group *group = selection_create_group(server);
+      return group != NULL;
+    }
+
     return false;
+  }
+
+  if (strncmp(cmd, "select ", 7) == 0) {
+    const char *subcmd = cmd + 7;
+
+    if (strcmp(subcmd, "clear") == 0) {
+      selection_clear(server);
+      return true;
+    }
+
+    if (strncmp(subcmd, "add ", 4) == 0) {
+      const char *window_id = subcmd + 4;
+      struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+      if (toplevel) {
+        return selection_add(server, toplevel);
+      }
+      return false;
+    }
+
+    if (strncmp(subcmd, "remove ", 7) == 0) {
+      const char *window_id = subcmd + 7;
+      struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+      if (toplevel) {
+        return selection_remove(server, toplevel);
+      }
+      return false;
+    }
+
+    if (strncmp(subcmd, "toggle ", 7) == 0) {
+      const char *window_id = subcmd + 7;
+      struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+      if (toplevel) {
+        selection_toggle(server, toplevel);
+        return true;
+      }
+      return false;
+    }
+
+    if (strcmp(subcmd, "all") == 0) {
+      struct planar_toplevel *toplevel;
+      wl_list_for_each(toplevel, &server->active_workspace->toplevels, link) {
+        selection_add(server, toplevel);
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  if (strcmp(cmd, "group_selection") == 0) {
+    struct planar_group *group = selection_create_group(server);
+    return group != NULL;
+  }
+
+  if (strcmp(cmd, "clear_selection") == 0) {
+    selection_clear(server);
+    return true;
   }
 
   return false;

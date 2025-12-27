@@ -40,6 +40,13 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "                              Move entire group to position\n");
     fprintf(stderr, "  group color <group_id> <R G B A>\n");
     fprintf(stderr, "                              Set group border color\n");
+    fprintf(stderr, "  group create_from_selection Create group from current selection\n");
+    fprintf(stderr, "\nSelection Commands:\n");
+    fprintf(stderr, "  select add <window_id>      Add window to selection\n");
+    fprintf(stderr, "  select remove <window_id>   Remove window from selection\n");
+    fprintf(stderr, "  select toggle <window_id>   Toggle window in selection\n");
+    fprintf(stderr, "  select clear                Clear selection\n");
+    fprintf(stderr, "  select all                  Select all windows on current workspace\n");
     fprintf(stderr, "\nSettings:\n");
     fprintf(stderr, "  border_width <N>            Border width in pixels (0-32)\n");
     fprintf(stderr, "  border_color <R G B A>      Border color (floats 0.0-1.0)\n");
@@ -53,6 +60,7 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "  window <id>                 Get window info (get only)\n");
     fprintf(stderr, "  groups                      List all groups (get only)\n");
     fprintf(stderr, "  group <id>                  Get group info (get only)\n");
+    fprintf(stderr, "  selection                   List selected window IDs (get only)\n");
     fprintf(stderr, "\nEvents (with -e flag):\n");
     fprintf(stderr, "  workspace                   Workspace switched\n");
     fprintf(stderr, "  window_open                 Window opened\n");

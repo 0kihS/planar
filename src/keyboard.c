@@ -8,6 +8,7 @@
 #include "workspaces.h"
 #include "toplevel.h"
 #include "cursor.h"
+#include "selection.h"
 
 static void keyboard_handle_modifiers(struct wl_listener *listener, void *data) {
     (void)data;
@@ -53,6 +54,13 @@ static void keyboard_handle_key(struct wl_listener *listener, void *data) {
             reset_cursor_mode(server);
         }
         return;
+    }
+
+    if (sym == XKB_KEY_Escape && event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+        if (selection_count(server) > 0) {
+            selection_clear(server);
+            return;
+        }
     }
 
     bool handled = false;

@@ -11,6 +11,19 @@
 
 static uint32_t next_group_id = 0;
 
+static const float group_palette[][4] = {
+    {0.9f, 0.4f, 0.4f, 1.0f},  // Red
+    {0.5f, 0.8f, 0.4f, 1.0f},  // Green
+    {0.6f, 0.4f, 0.9f, 1.0f},  // Purple
+    {0.9f, 0.7f, 0.3f, 1.0f},  // Orange
+    {0.9f, 0.5f, 0.7f, 1.0f},  // Pink
+    {0.4f, 0.6f, 0.9f, 1.0f},  // Blue
+    {0.8f, 0.8f, 0.4f, 1.0f},  // Yellow
+    {0.6f, 0.9f, 0.7f, 1.0f},  // Mint
+};
+static const int group_palette_size = sizeof(group_palette) / sizeof(group_palette[0]);
+static uint32_t next_color_index = 0;
+
 struct planar_group *group_create(struct planar_server *server, const char *group_id) {
     struct planar_group *group = calloc(1, sizeof(*group));
     if (!group) {
@@ -22,7 +35,6 @@ struct planar_group *group_create(struct planar_server *server, const char *grou
     if (group_id) {
         group->group_id = strdup(group_id);
     } else {
-        // Auto-generate an ID
         char buf[32];
         snprintf(buf, sizeof(buf), "group:%u", next_group_id++);
         group->group_id = strdup(buf);
@@ -35,11 +47,12 @@ struct planar_group *group_create(struct planar_server *server, const char *grou
 
     wl_list_init(&group->members);
 
-    // Default group color - a distinct teal/cyan
-    group->border_color[0] = 0.2f;
-    group->border_color[1] = 0.7f;
-    group->border_color[2] = 0.8f;
-    group->border_color[3] = 1.0f;
+    const float *color = group_palette[next_color_index % group_palette_size];
+    group->border_color[0] = color[0];
+    group->border_color[1] = color[1];
+    group->border_color[2] = color[2];
+    group->border_color[3] = color[3];
+    next_color_index++;
 
     wl_list_insert(&server->groups, &group->link);
 
@@ -85,7 +98,12 @@ bool group_add_toplevel(struct planar_group *group, struct planar_toplevel *topl
 
     // Already in a group? Remove from it first
     if (toplevel->group) {
-        group_remove_toplevel(toplevel->group, toplevel);
+        struct planar_group *old_group = toplevel->group;
+        group_remove_toplevel(old_group, toplevel);
+        // Destroy the old group if it's now empty
+        if (group_is_empty(old_group)) {
+            group_destroy(old_group);
+        }
     }
 
     struct planar_group_member *member = calloc(1, sizeof(*member));

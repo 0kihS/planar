@@ -149,6 +149,8 @@ void server_init(struct planar_server *server) {
 
     wl_list_init(&server->workspaces);
     wl_list_init(&server->groups);
+    wl_list_init(&server->selected_toplevels);
+    server->selection_box = NULL;
     for (int i = 0; i < WORKSPACE_COUNT; i++) {
         struct planar_workspace *ws = calloc(1, sizeof(*ws));
         ws->index = i;

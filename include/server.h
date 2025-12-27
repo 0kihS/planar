@@ -24,7 +24,8 @@ enum planar_cursor_mode {
     PLANAR_CURSOR_MOVE,
     PLANAR_CURSOR_RESIZE,
     PLANAR_CURSOR_PANNING,
-	PLANAR_CURSOR_DRAG_PENDING,
+    PLANAR_CURSOR_DRAG_PENDING,
+    PLANAR_CURSOR_BOX_SELECT,
 };
 
 struct planar_server {
@@ -51,6 +52,10 @@ struct planar_server {
     struct planar_workspace *active_workspace;
 
     struct wl_list groups;
+
+	struct wl_list selected_toplevels;
+    struct wlr_scene_rect *selection_box;
+    double selection_box_start_x, selection_box_start_y;
 
     struct config *config;
 

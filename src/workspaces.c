@@ -4,6 +4,7 @@
 #include "output.h"
 #include "ipc.h"
 #include "group.h"
+#include "selection.h"
 #include <stdio.h>
 
 void set_workspace_offset(struct planar_server *server, int offset_x, int offset_y) {
@@ -37,6 +38,10 @@ void update_workspace_offset(struct planar_server *server, int offset_x, int off
 
 void switch_to_workspace(struct planar_server *server, int index) {
     struct planar_workspace *new_workspace;
+
+    // Clear selection when switching workspaces
+    selection_clear(server);
+
     wlr_scene_node_set_enabled(&server->active_workspace->scene_tree->node, false);
 
     wl_list_for_each(new_workspace, &server->workspaces, link) {

@@ -83,6 +83,7 @@ src_files = files(
 	'src/planar.c',
 	'src/popup.c',
 	'src/seat.c',
+	'src/selection.c',
 	'src/server.c',
 	'src/toplevel.c',
 	'src/workspaces.c',

@@ -5,6 +5,7 @@
 #include "layers.h"
 #include "decoration.h"
 #include "group.h"
+#include "selection.h"
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -195,9 +196,12 @@ void process_cursor_move(struct planar_server *server, uint32_t time) {
     double new_logical_x = new_node_x / scale;
     double new_logical_y = new_node_y / scale;
 
-    if (toplevel->group) {
-        double delta_x = new_logical_x - toplevel->logical_x;
-        double delta_y = new_logical_y - toplevel->logical_y;
+    double delta_x = new_logical_x - toplevel->logical_x;
+    double delta_y = new_logical_y - toplevel->logical_y;
+
+    if (selection_count(server) > 1 && selection_contains(server, toplevel)) {
+        selection_move_by(server, delta_x, delta_y);
+    } else if (toplevel->group) {
         group_move_by(toplevel->group, delta_x, delta_y);
     } else {
         toplevel->logical_x = new_logical_x;
@@ -272,10 +276,15 @@ static void server_cursor_motion(struct wl_listener *listener, void *data) {
     if (server->cursor_mode == PLANAR_CURSOR_PANNING) {
         double dx = server->cursor->x - server->grab_x;
         double dy = server->cursor->y - server->grab_y;
-        
+
         set_workspace_offset(server, 
             server->grab_workspace_x + dx,
             server->grab_workspace_y + dy);
+        return;
+    }
+
+    if (server->cursor_mode == PLANAR_CURSOR_BOX_SELECT) {
+        selection_update_box(server, server->cursor->x, server->cursor->y);
         return;
     }
 
@@ -307,13 +316,27 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
         wl_container_of(listener, server, cursor_button);
     struct wlr_pointer_button_event *event = data;
 
+    double cx = server->cursor->x;
+    double cy = server->cursor->y;
+
+    // Check for Shift modifier
+    struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+    bool shift_held = keyboard && (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_SHIFT);
+
+    // Handle box-select release
+    if (server->cursor_mode == PLANAR_CURSOR_BOX_SELECT &&
+        event->button == BTN_LEFT &&
+        event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+        selection_finish_box(server);
+        server->cursor_mode = PLANAR_CURSOR_PASSTHROUGH;
+        return;
+    }
+
     // Handle drag mode
     if (server->cursor_mode == PLANAR_CURSOR_DRAG_PENDING && 
         event->button == BTN_LEFT && 
         event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
         
-        double cx = server->cursor->x;
-        double cy = server->cursor->y;
         double sx, sy;
         struct wlr_surface *surface;
         
@@ -353,8 +376,6 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
         }
     }
 
-    double cx = server->cursor->x;
-    double cy = server->cursor->y;
     double sx, sy;
     struct wlr_surface *surface = NULL;
     struct planar_layer_surface *layer_surface = layer_surface_at(server,
@@ -405,8 +426,26 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
 
     struct planar_toplevel *toplevel = desktop_toplevel_at(server,
             cx, cy, &surface, &sx, &sy);
-    
-    if (toplevel) {
+
+    if (event->button == BTN_LEFT && event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        if (toplevel) {
+            if (shift_held) {
+                selection_toggle(server, toplevel);
+                return;
+            }
+
+            if (!selection_contains(server, toplevel)) {
+                selection_clear(server);
+            }
+            focus_toplevel(toplevel, surface);
+        } else {
+            if (!shift_held) {
+                selection_clear(server);
+            }
+            server->cursor_mode = PLANAR_CURSOR_BOX_SELECT;
+            selection_start_box(server, cx, cy);
+        }
+    } else if (toplevel) {
         focus_toplevel(toplevel, surface);
     }
 }
@@ -416,17 +455,11 @@ static void server_cursor_axis(struct wl_listener *listener, void *data) {
 		wl_container_of(listener, server, cursor_axis);
 	struct wlr_pointer_axis_event *event = data;
     
-    // Check for Ctrl + Scroll
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
     if (keyboard && (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_CTRL)) {
         if (event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL) {
             double zoom_step = server->settings.zoom_step;
             double scale = server->active_workspace->scale;
-            // Scroll down (-delta) -> zoom out. Scroll up (+delta) -> zoom in?
-            // Actually usually negative delta is scroll up.
-            // Let's assume standard wheel: delta < 0 is scroll up.
-            
-            // Normalize delta
             double delta = event->delta;
             if (delta == 0) delta = event->delta_discrete * 10;
 
@@ -466,7 +499,11 @@ void reset_cursor_mode(struct planar_server *server) {
                 server->grabbed_toplevel->xdg_toplevel->base->surface);
         }
     }
-    
+
+    if (server->cursor_mode == PLANAR_CURSOR_BOX_SELECT) {
+        selection_cancel_box(server);
+    }
+
     server->cursor_mode = PLANAR_CURSOR_PASSTHROUGH;
     server->grabbed_toplevel = NULL;
 }
