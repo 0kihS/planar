@@ -52,4 +52,9 @@ void group_recalculate_offsets(struct planar_group *group);
 // Visual updates
 void group_update_decorations(struct planar_group *group);
 
+// Bounds
+void group_get_bounds(struct planar_group *group,
+                      double *out_x, double *out_y,
+                      int *out_width, int *out_height);
+
 #endif // PLANAR_GROUP_H

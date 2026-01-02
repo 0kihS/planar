@@ -7,6 +7,7 @@
 #include "output.h"
 #include "popup.h"
 #include "seat.h"
+#include "snap.h"
 #include "toplevel.h"
 #include "workspaces.h"
 
@@ -211,6 +212,11 @@ void server_init(struct planar_server *server) {
     server->settings.zoom_max = 5.0;
     server->settings.zoom_step = 0.1;
     server->settings.cursor_size = 24;
+    server->settings.snap_enabled = true;
+    server->settings.snap_threshold = 10;
+
+    /* Initialize snap system */
+    snap_init(server);
 
     /* Initialize window ID tracker */
     server->window_id_tracker.app_ids = NULL;
@@ -240,6 +246,7 @@ void server_run(struct planar_server *server) {
 }
 
 void server_finish(struct planar_server *server) {
+    snap_finish(server);
     ipc_finish(server);
     wl_display_destroy_clients(server->wl_display);
     wl_list_remove(&server->new_input.link);

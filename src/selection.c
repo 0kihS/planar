@@ -235,3 +235,39 @@ void selection_cancel_box(struct planar_server *server) {
         server->selection_box = NULL;
     }
 }
+
+void selection_get_bounds(struct planar_server *server,
+                          double *out_x, double *out_y,
+                          int *out_width, int *out_height) {
+    if (!server || selection_count(server) == 0) {
+        *out_x = 0;
+        *out_y = 0;
+        *out_width = 0;
+        *out_height = 0;
+        return;
+    }
+
+    double min_x = 1e9, min_y = 1e9;
+    double max_x = -1e9, max_y = -1e9;
+
+    struct planar_selection_entry *entry;
+    wl_list_for_each(entry, &server->selected_toplevels, link) {
+        struct planar_toplevel *toplevel = entry->toplevel;
+        if (!toplevel || !toplevel->decoration) continue;
+
+        double x1 = toplevel->logical_x;
+        double y1 = toplevel->logical_y;
+        double x2 = x1 + toplevel->decoration->width;
+        double y2 = y1 + toplevel->decoration->height;
+
+        if (x1 < min_x) min_x = x1;
+        if (y1 < min_y) min_y = y1;
+        if (x2 > max_x) max_x = x2;
+        if (y2 > max_y) max_y = y2;
+    }
+
+    *out_x = min_x;
+    *out_y = min_y;
+    *out_width = (int)(max_x - min_x);
+    *out_height = (int)(max_y - min_y);
+}

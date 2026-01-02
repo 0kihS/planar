@@ -54,6 +54,8 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "  zoom_max <N>                Maximum zoom level\n");
     fprintf(stderr, "  zoom_step <N>               Zoom step size\n");
     fprintf(stderr, "  cursor_size <N>             Cursor size (8-128)\n");
+    fprintf(stderr, "  snap_enabled <0|1>          Enable/disable window snapping\n");
+    fprintf(stderr, "  snap_threshold <N>          Snap distance in pixels (0-100)\n");
     fprintf(stderr, "  workspaces                  Get workspace info (get only)\n");
     fprintf(stderr, "  focused                     Get focused window info (get only)\n");
     fprintf(stderr, "  windows                     List all windows (get only)\n");

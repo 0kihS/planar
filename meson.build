@@ -85,6 +85,7 @@ src_files = files(
 	'src/seat.c',
 	'src/selection.c',
 	'src/server.c',
+	'src/snap.c',
 	'src/toplevel.c',
 	'src/workspaces.c',
 )
