@@ -19,6 +19,7 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "  move_to_workspace <N>       Move focused window to workspace N\n");
     fprintf(stderr, "  move_workspace <X> <Y>      Pan workspace by offset\n");
     fprintf(stderr, "  focus_window <id>           Focus window by ID\n");
+    fprintf(stderr, "  goto_window <id>            Go to and center window by ID\n");
     fprintf(stderr, "  close_window <id>           Close window by ID\n");
     fprintf(stderr, "  move_window <id> <X> <Y>    Move window to logical coordinates\n");
     fprintf(stderr, "  resize_window <id> <W> <H>  Resize window\n");

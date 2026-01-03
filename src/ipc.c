@@ -719,6 +719,47 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
     return false;
   }
 
+  if (strncmp(cmd, "goto_window ", 12) == 0) {
+    const char *window_id = cmd + 12;
+    struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
+    if (toplevel) {
+      // Switch workspace if needed
+      if (toplevel->workspace != server->active_workspace) {
+        switch_to_workspace(server, toplevel->workspace->index);
+      }
+
+      // Get window center in logical coordinates
+      int win_width = toplevel->decoration ? toplevel->decoration->width : 100;
+      int win_height = toplevel->decoration ? toplevel->decoration->height : 100;
+      double win_center_x = toplevel->logical_x + win_width / 2.0;
+      double win_center_y = toplevel->logical_y + win_height / 2.0;
+
+      // Get screen center (use first output)
+      int screen_width = 1920, screen_height = 1080; // fallback
+      struct planar_output *output;
+      wl_list_for_each(output, &server->outputs, link) {
+        screen_width = output->wlr_output->width;
+        screen_height = output->wlr_output->height;
+        break;
+      }
+      double screen_center_x = screen_width / 2.0;
+      double screen_center_y = screen_height / 2.0;
+
+      // Calculate offset to center the window
+      // screen_pos = logical_pos * scale + offset
+      // We want: screen_center = win_center * scale + new_offset
+      // So: new_offset = screen_center - win_center * scale
+      struct planar_workspace *ws = toplevel->workspace;
+      int new_offset_x = (int)(screen_center_x - win_center_x * ws->scale);
+      int new_offset_y = (int)(screen_center_y - win_center_y * ws->scale);
+
+      set_workspace_offset(server, new_offset_x, new_offset_y);
+      focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
+      return true;
+    }
+    return false;
+  }
+
   if (strncmp(cmd, "spawn ", 6) == 0) {
     const char *command = cmd + 6;
     pid_t pid = fork();
