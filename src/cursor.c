@@ -171,6 +171,8 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
 
     if (toplevel && toplevel->server) {
         if (surface) {
+            // Reset cursor to default when entering a surface from decoration
+            wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
             wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
             wlr_seat_pointer_notify_motion(seat, time, sx, sy);
         }

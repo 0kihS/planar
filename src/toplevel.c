@@ -221,6 +221,19 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
         wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
     }
 
+    // Check if client is requesting a specific size via min/max constraints
+    struct wlr_xdg_toplevel_state *state = &toplevel->xdg_toplevel->current;
+    if (state->min_width > 0 && state->min_height > 0 &&
+        state->min_width == state->max_width &&
+        state->min_height == state->max_height) {
+        // Client wants exact size - send configure with that size
+        struct wlr_box geo = toplevel->xdg_toplevel->base->geometry;
+        if (geo.width != state->min_width || geo.height != state->min_height) {
+            wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel,
+                state->min_width, state->min_height);
+        }
+    }
+
     struct wlr_box geo = toplevel->xdg_toplevel->base->geometry;
 
     if (server->cursor_mode == PLANAR_CURSOR_RESIZE && server->grabbed_toplevel == toplevel) {
