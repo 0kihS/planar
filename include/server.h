@@ -19,6 +19,8 @@
 #include <wlr/types/wlr_xdg_shell.h>
 
 
+struct planar_snap_state;
+
 enum planar_cursor_mode {
     PLANAR_CURSOR_PASSTHROUGH,
     PLANAR_CURSOR_MOVE,
@@ -52,6 +54,8 @@ struct planar_server {
     struct planar_workspace *active_workspace;
 
     struct wl_list groups;
+
+    struct planar_snap_state *snap_state;
 
 	struct wl_list selected_toplevels;
     struct wlr_scene_rect *selection_box;
@@ -106,6 +110,8 @@ struct planar_server {
 		double zoom_max;
 		double zoom_step;
 		int cursor_size;
+		bool snap_enabled;
+		int snap_threshold;
 	} settings;
 
 	struct {

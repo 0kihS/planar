@@ -114,10 +114,9 @@ void selection_move_by(struct planar_server *server, double delta_x, double delt
         toplevel->logical_x += delta_x;
         toplevel->logical_y += delta_y;
 
-        double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
         wlr_scene_node_set_position(&toplevel->container->node,
-            toplevel->logical_x * scale,
-            toplevel->logical_y * scale);
+            toplevel->logical_x,
+            toplevel->logical_y);
     }
 }
 
@@ -146,32 +145,33 @@ void selection_start_box(struct planar_server *server, double x, double y) {
     server->selection_box_start_y = y;
 
     if (!server->selection_box && server->active_workspace) {
+        struct planar_workspace *ws = server->active_workspace;
         // Semi-transparent cyan to match selection color
         static const float box_color[4] = {0.0f, 0.85f, 0.85f, 0.3f};
         server->selection_box = wlr_scene_rect_create(
-            server->active_workspace->scene_tree, 1, 1, box_color);
+            ws->scene_tree, 1, 1, box_color);
         if (server->selection_box) {
-            wlr_scene_node_set_position(&server->selection_box->node, (int)x, (int)y);
+            double lx = (x - ws->global_offset.x) / ws->scale;
+            double ly = (y - ws->global_offset.y) / ws->scale;
+            wlr_scene_node_set_position(&server->selection_box->node, (int)lx, (int)ly);
         }
     }
 }
 
 void selection_update_box(struct planar_server *server, double x, double y) {
-    if (!server || !server->selection_box) return;
-
-    double start_x = server->selection_box_start_x;
-    double start_y = server->selection_box_start_y;
-
-    double left = start_x < x ? start_x : x;
-    double top = start_y < y ? start_y : y;
-    double width = start_x < x ? x - start_x : start_x - x;
-    double height = start_y < y ? y - start_y : start_y - y;
+    if (!server || !server->selection_box || !server->active_workspace) return;
 
     struct planar_workspace *ws = server->active_workspace;
-    if (ws) {
-        left -= ws->global_offset.x;
-        top -= ws->global_offset.y;
-    }
+    
+    double start_x = (server->selection_box_start_x - ws->global_offset.x) / ws->scale;
+    double start_y = (server->selection_box_start_y - ws->global_offset.y) / ws->scale;
+    double current_x = (x - ws->global_offset.x) / ws->scale;
+    double current_y = (y - ws->global_offset.y) / ws->scale;
+
+    double left = start_x < current_x ? start_x : current_x;
+    double top = start_y < current_y ? start_y : current_y;
+    double width = fabs(current_x - start_x);
+    double height = fabs(current_y - start_y);
 
     wlr_scene_node_set_position(&server->selection_box->node, (int)left, (int)top);
     wlr_scene_rect_set_size(server->selection_box, (int)width, (int)height);
@@ -186,17 +186,16 @@ static bool box_intersects_toplevel(struct planar_server *server,
     struct planar_workspace *ws = toplevel->workspace;
     if (!ws || ws != server->active_workspace) return false;
 
-    double scale = ws->scale;
+    double tl_x1 = toplevel->logical_x;
+    double tl_y1 = toplevel->logical_y;
+    double tl_x2 = tl_x1 + toplevel->decoration->width;
+    double tl_y2 = tl_y1 + toplevel->decoration->height;
 
-    double tl_x1 = toplevel->logical_x * scale;
-    double tl_y1 = toplevel->logical_y * scale;
-    double tl_x2 = tl_x1 + toplevel->decoration->width * scale;
-    double tl_y2 = tl_y1 + toplevel->decoration->height * scale;
-
-    double bl_x1 = box_x1 - ws->global_offset.x;
-    double bl_y1 = box_y1 - ws->global_offset.y;
-    double bl_x2 = box_x2 - ws->global_offset.x;
-    double bl_y2 = box_y2 - ws->global_offset.y;
+    // Convert input global box coordinates to logical coordinates
+    double bl_x1 = (box_x1 - ws->global_offset.x) / ws->scale;
+    double bl_y1 = (box_y1 - ws->global_offset.y) / ws->scale;
+    double bl_x2 = (box_x2 - ws->global_offset.x) / ws->scale;
+    double bl_y2 = (box_y2 - ws->global_offset.y) / ws->scale;
 
     if (bl_x1 > bl_x2) { double t = bl_x1; bl_x1 = bl_x2; bl_x2 = t; }
     if (bl_y1 > bl_y2) { double t = bl_y1; bl_y1 = bl_y2; bl_y2 = t; }
@@ -234,4 +233,41 @@ void selection_cancel_box(struct planar_server *server) {
         wlr_scene_node_destroy(&server->selection_box->node);
         server->selection_box = NULL;
     }
+}
+
+void selection_get_bounds(struct planar_server *server,
+                          double *out_x, double *out_y,
+                          int *out_width, int *out_height) {
+    if (!server || selection_count(server) == 0) {
+        *out_x = 0;
+        *out_y = 0;
+        *out_width = 0;
+        *out_height = 0;
+        return;
+    }
+
+    double min_x = 1e9, min_y = 1e9;
+    double max_x = -1e9, max_y = -1e9;
+
+    int border = server->settings.border_width;
+    struct planar_selection_entry *entry;
+    wl_list_for_each(entry, &server->selected_toplevels, link) {
+        struct planar_toplevel *toplevel = entry->toplevel;
+        if (!toplevel || !toplevel->decoration) continue;
+
+        double x1 = toplevel->logical_x;
+        double y1 = toplevel->logical_y;
+        double x2 = x1 + toplevel->decoration->width + 2 * border;
+        double y2 = y1 + toplevel->decoration->height + 2 * border;
+
+        if (x1 < min_x) min_x = x1;
+        if (y1 < min_y) min_y = y1;
+        if (x2 > max_x) max_x = x2;
+        if (y2 > max_y) max_y = y2;
+    }
+
+    *out_x = min_x;
+    *out_y = min_y;
+    *out_width = (int)(max_x - min_x);
+    *out_height = (int)(max_y - min_y);
 }

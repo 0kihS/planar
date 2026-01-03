@@ -6,6 +6,7 @@
 #include "decoration.h"
 #include "group.h"
 #include "selection.h"
+#include "snap.h"
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
@@ -197,12 +198,64 @@ void process_cursor_move(struct planar_server *server, uint32_t time) {
     double new_logical_x = (server->cursor->x - server->grab_x) / total_scale;
     double new_logical_y = (server->cursor->y - server->grab_y) / total_scale;
 
+    // Determine what's being moved and get bounding box for snap
+    bool is_selection_move = selection_count(server) > 1 && selection_contains(server, toplevel);
+    bool is_group_move = toplevel->group != NULL;
+
+    // Apply snap detection
+    if (server->settings.snap_enabled) {
+        if (is_selection_move) {
+            // Get selection bounding box
+            double bounds_x, bounds_y;
+            int bounds_w, bounds_h;
+            selection_get_bounds(server, &bounds_x, &bounds_y, &bounds_w, &bounds_h);
+
+            // Calculate where the bounding box would move to
+            double delta_x = new_logical_x - toplevel->logical_x;
+            double delta_y = new_logical_y - toplevel->logical_y;
+            double new_bounds_x = bounds_x + delta_x;
+            double new_bounds_y = bounds_y + delta_y;
+
+            // Snap using the bounding box (pass toplevel for skip logic)
+            snap_update(server, toplevel, &new_bounds_x, &new_bounds_y, bounds_w, bounds_h);
+
+            // Convert back to toplevel position
+            new_logical_x = toplevel->logical_x + (new_bounds_x - bounds_x);
+            new_logical_y = toplevel->logical_y + (new_bounds_y - bounds_y);
+        } else if (is_group_move) {
+            // Get group bounding box
+            double bounds_x, bounds_y;
+            int bounds_w, bounds_h;
+            group_get_bounds(toplevel->group, &bounds_x, &bounds_y, &bounds_w, &bounds_h);
+
+            // Calculate where the bounding box would move to
+            double delta_x = new_logical_x - toplevel->logical_x;
+            double delta_y = new_logical_y - toplevel->logical_y;
+            double new_bounds_x = bounds_x + delta_x;
+            double new_bounds_y = bounds_y + delta_y;
+
+            // Snap using the bounding box
+            snap_update(server, toplevel, &new_bounds_x, &new_bounds_y, bounds_w, bounds_h);
+
+            // Convert back to toplevel position
+            new_logical_x = toplevel->logical_x + (new_bounds_x - bounds_x);
+            new_logical_y = toplevel->logical_y + (new_bounds_y - bounds_y);
+        } else if (toplevel->decoration) {
+            // Single window snap
+            int border = server->settings.border_width;
+            int moving_width = toplevel->decoration->width + 2 * border;
+            int moving_height = toplevel->decoration->height + 2 * border;
+            snap_update(server, toplevel, &new_logical_x, &new_logical_y,
+                        moving_width, moving_height);
+        }
+    }
+
     double delta_x = new_logical_x - toplevel->logical_x;
     double delta_y = new_logical_y - toplevel->logical_y;
 
-    if (selection_count(server) > 1 && selection_contains(server, toplevel)) {
+    if (is_selection_move) {
         selection_move_by(server, delta_x, delta_y);
-    } else if (toplevel->group) {
+    } else if (is_group_move) {
         group_move_by(toplevel->group, delta_x, delta_y);
     } else {
         toplevel->logical_x = new_logical_x;
@@ -341,16 +394,16 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
     }
 
     // Handle drag mode
-    if (server->cursor_mode == PLANAR_CURSOR_DRAG_PENDING && 
-        event->button == BTN_LEFT && 
+    if (server->cursor_mode == PLANAR_CURSOR_DRAG_PENDING &&
+        event->button == BTN_LEFT &&
         event->state == WL_POINTER_BUTTON_STATE_PRESSED) {
-        
+
         double sx, sy;
         struct wlr_surface *surface;
-        
+
         struct planar_toplevel *toplevel = desktop_toplevel_at(server,
                 cx, cy, &surface, &sx, &sy);
-        
+
         if (toplevel) {
             server->cursor_mode = PLANAR_CURSOR_MOVE;
             server->grabbed_toplevel = toplevel;
@@ -364,12 +417,15 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
 
             server->grab_x = cx - (toplevel->container->node.x * total_scale);
             server->grab_y = cy - (toplevel->container->node.y * total_scale);
+            snap_start(server);
             return;
         }
     }
 
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         if (server->cursor_mode == PLANAR_CURSOR_MOVE) {
+            // End snap mode before changing cursor mode
+            snap_end(server);
             server->cursor_mode = PLANAR_CURSOR_DRAG_PENDING;
         }
     }
@@ -515,9 +571,12 @@ static void server_cursor_frame(struct wl_listener *listener, void *data) {
 
 void reset_cursor_mode(struct planar_server *server) {
     if (server->cursor_mode == PLANAR_CURSOR_MOVE) {
+        // End snap mode and cleanup guides
+        snap_end(server);
+
         // If we were moving a window, make sure to focus it
         if (server->grabbed_toplevel) {
-            focus_toplevel(server->grabbed_toplevel, 
+            focus_toplevel(server->grabbed_toplevel,
                 server->grabbed_toplevel->xdg_toplevel->base->surface);
         }
     }

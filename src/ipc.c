@@ -332,6 +332,12 @@ static void handle_get_command(struct planar_server *server, int client_fd,
   } else if (strcmp(setting, "cursor_size") == 0) {
     snprintf(buf, sizeof(buf), "%d", server->settings.cursor_size);
     send_response(client_fd, true, buf);
+  } else if (strcmp(setting, "snap_enabled") == 0) {
+    snprintf(buf, sizeof(buf), "%s", server->settings.snap_enabled ? "true" : "false");
+    send_response(client_fd, true, buf);
+  } else if (strcmp(setting, "snap_threshold") == 0) {
+    snprintf(buf, sizeof(buf), "%d", server->settings.snap_threshold);
+    send_response(client_fd, true, buf);
   } else if (strcmp(setting, "workspaces") == 0) {
     handle_get_workspaces(server, client_fd);
   } else if (strcmp(setting, "focused") == 0) {
@@ -610,6 +616,20 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
       int size;
       if (sscanf(value, "%d", &size) == 1 && size >= 8 && size <= 128) {
         server->settings.cursor_size = size;
+        return true;
+      }
+    } else if (strcmp(setting, "snap_enabled") == 0) {
+      if (strcmp(value, "1") == 0 || strcmp(value, "true") == 0) {
+        server->settings.snap_enabled = true;
+        return true;
+      } else if (strcmp(value, "0") == 0 || strcmp(value, "false") == 0) {
+        server->settings.snap_enabled = false;
+        return true;
+      }
+    } else if (strcmp(setting, "snap_threshold") == 0) {
+      int threshold;
+      if (sscanf(value, "%d", &threshold) == 1 && threshold >= 0 && threshold <= 100) {
+        server->settings.snap_threshold = threshold;
         return true;
       }
     }

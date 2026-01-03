@@ -30,4 +30,8 @@ void selection_update_box(struct planar_server *server, double x, double y);
 void selection_finish_box(struct planar_server *server);
 void selection_cancel_box(struct planar_server *server);
 
+void selection_get_bounds(struct planar_server *server,
+                          double *out_x, double *out_y,
+                          int *out_width, int *out_height);
+
 #endif // PLANAR_SELECTION_H
