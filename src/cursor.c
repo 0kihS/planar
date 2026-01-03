@@ -270,7 +270,6 @@ void process_cursor_move(struct planar_server *server, uint32_t time) {
 void process_cursor_resize(struct planar_server *server, uint32_t time) {
 	(void)time;
 	struct planar_toplevel *toplevel = server->grabbed_toplevel;
-	int border = server->settings.border_width;
 
 	// Find parent total scale
 	float total_scale = 1.0;
@@ -311,15 +310,6 @@ void process_cursor_resize(struct planar_server *server, uint32_t time) {
 			new_right = new_left + 1;
 		}
 	}
-
-	// Container position is client position minus border
-	int container_x = new_left - border;
-	int container_y = new_top - border;
-
-	toplevel->logical_x = container_x;
-	toplevel->logical_y = container_y;
-
-	wlr_scene_node_set_position(&toplevel->container->node, container_x, container_y);
 
 	int new_width = (new_right - new_left);
 	int new_height = (new_bottom - new_top);

@@ -88,9 +88,10 @@ static void begin_interactive(struct planar_toplevel *toplevel,
         server->grab_x = server->cursor->x - (border_x * total_scale);
         server->grab_y = server->cursor->y - (border_y * total_scale);
 
+        int border = server->settings.border_width;
         server->grab_geobox = *geo_box;
-        server->grab_geobox.x = toplevel->container->node.x;
-        server->grab_geobox.y = toplevel->container->node.y;
+        server->grab_geobox.x = toplevel->container->node.x + border;
+        server->grab_geobox.y = toplevel->container->node.y + border;
 
         server->resize_edges = edges;
     }
@@ -214,12 +215,24 @@ static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
 static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
     (void)data;
     struct planar_toplevel *toplevel = wl_container_of(listener, toplevel, commit);
+    struct planar_server *server = toplevel->server;
 
     if (toplevel->xdg_toplevel->base->initial_commit) {
         wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
     }
 
     struct wlr_box geo = toplevel->xdg_toplevel->base->geometry;
+
+    if (server->cursor_mode == PLANAR_CURSOR_RESIZE && server->grabbed_toplevel == toplevel) {
+        int border = server->settings.border_width;
+        if (server->resize_edges & WLR_EDGE_LEFT) {
+            toplevel->logical_x = (server->grab_geobox.x + server->grab_geobox.width - geo.width) - border;
+        }
+        if (server->resize_edges & WLR_EDGE_TOP) {
+            toplevel->logical_y = (server->grab_geobox.y + server->grab_geobox.height - geo.height) - border;
+        }
+    }
+
     toplevel->base_width = geo.width;
     toplevel->base_height = geo.height;
 
