@@ -72,26 +72,20 @@ void decoration_destroy(struct planar_decoration *decoration) {
 }
 
 void decoration_update_geometry(struct planar_decoration *decoration) {
-    if (!decoration || !decoration->toplevel) return;
-    double scale = decoration->toplevel->workspace ? decoration->toplevel->workspace->scale : 1.0;
-    decoration_update_geometry_scaled(decoration, scale);
-}
-
-void decoration_update_geometry_scaled(struct planar_decoration *decoration, double scale) {
     if (!decoration || !decoration->toplevel || !decoration->tree) return;
 
     struct planar_toplevel *toplevel = decoration->toplevel;
     struct wlr_box *geo = &toplevel->xdg_toplevel->base->geometry;
 
-    int width = geo->width * scale;
-    int height = geo->height * scale;
+    int width = geo->width;
+    int height = geo->height;
 
     if (width <= 0 || height <= 0) {
         return;
     }
 
-    decoration->width = geo->width;
-    decoration->height = geo->height;
+    decoration->width = width;
+    decoration->height = height;
 
     int border = get_border_width(toplevel);
     const float *color = get_border_color(toplevel);
@@ -124,27 +118,32 @@ int decoration_get_edge_at(struct planar_decoration *decoration, double lx, doub
     *edges = 0;
 
     struct planar_toplevel *toplevel = decoration->toplevel;
-    struct planar_workspace *ws = toplevel->workspace;
-    double scale = ws ? ws->scale : 1.0;
+    
+    int container_lx, container_ly;
+    if (!wlr_scene_node_coords(&toplevel->container->node, &container_lx, &container_ly)) {
+        return -1;
+    }
 
-    int offset_x = ws ? ws->global_offset.x : 0;
-    int offset_y = ws ? ws->global_offset.y : 0;
-    int container_x = toplevel->container->node.x + offset_x;
-    int container_y = toplevel->container->node.y + offset_y;
+    float total_scale = 1.0;
+    struct wlr_scene_node *it = &toplevel->container->node;
+    while (it) {
+        total_scale *= it->scale;
+        it = it->parent ? &it->parent->node : NULL;
+    }
 
-    int border = get_border_width(toplevel);
-    int width = decoration->width * scale;
-    int height = decoration->height * scale;
+    int border = get_border_width(toplevel) * total_scale;
+    int width = decoration->width * total_scale;
+    int height = decoration->height * total_scale;
 
-    int dec_left = container_x;
-    int dec_top = container_y;
-    int dec_right = container_x + width + 2 * border;
-    int dec_bottom = container_y + height + 2 * border;
+    int dec_left = container_lx;
+    int dec_top = container_ly;
+    int dec_right = container_lx + width + 2 * border;
+    int dec_bottom = container_ly + height + 2 * border;
 
-    int client_left = container_x + border;
-    int client_top = container_y + border;
-    int client_right = container_x + border + width;
-    int client_bottom = container_y + border + height;
+    int client_left = container_lx + border;
+    int client_top = container_ly + border;
+    int client_right = container_lx + border + width;
+    int client_bottom = container_ly + border + height;
 
     if (lx < dec_left || lx >= dec_right || ly < dec_top || ly >= dec_bottom) {
         return -1;

@@ -647,9 +647,8 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
       if (toplevel) {
         toplevel->logical_x = x;
         toplevel->logical_y = y;
-        double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
         wlr_scene_node_set_position(&toplevel->container->node,
-            (int)(x * scale), (int)(y * scale));
+            (int)x, (int)y);
         return true;
       }
     }
@@ -691,7 +690,7 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
             wl_list_insert(&target_ws->toplevels, &toplevel->link);
             wlr_scene_node_reparent(&toplevel->container->node, target_ws->scene_tree);
             toplevel->workspace = target_ws;
-            scale_toplevel(toplevel, target_ws->scale);
+            scale_toplevel(toplevel);
           }
           return true;
         }

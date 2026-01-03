@@ -26,7 +26,6 @@ struct planar_decoration {
 struct planar_decoration *decoration_create(struct planar_toplevel *toplevel);
 void decoration_destroy(struct planar_decoration *decoration);
 void decoration_update_geometry(struct planar_decoration *decoration);
-void decoration_update_geometry_scaled(struct planar_decoration *decoration, double scale);
 
 // Returns which edge the point is on, or -1 if not on decoration
 int decoration_get_edge_at(struct planar_decoration *decoration, double lx, double ly, uint32_t *edges);

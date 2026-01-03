@@ -67,22 +67,30 @@ static void begin_interactive(struct planar_toplevel *toplevel,
     server->grabbed_toplevel = toplevel;
     server->cursor_mode = mode;
 
+    // Find parent total scale
+    float total_scale = 1.0;
+    struct wlr_scene_node *it = toplevel->container->node.parent ? &toplevel->container->node.parent->node : NULL;
+    while (it) {
+        total_scale *= it->scale;
+        it = it->parent ? &it->parent->node : NULL;
+    }
+
     if (mode == PLANAR_CURSOR_MOVE) {
-        server->grab_x = server->cursor->x - toplevel->scene_tree->node.x;
-        server->grab_y = server->cursor->y - toplevel->scene_tree->node.y;
+        server->grab_x = server->cursor->x - (toplevel->container->node.x * total_scale);
+        server->grab_y = server->cursor->y - (toplevel->container->node.y * total_scale);
     } else {
         struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
 
-        double border_x = (toplevel->scene_tree->node.x + geo_box->x) +
+        double border_x = toplevel->container->node.x +
             ((edges & WLR_EDGE_RIGHT) ? geo_box->width : 0);
-        double border_y = (toplevel->scene_tree->node.y + geo_box->y) +
+        double border_y = toplevel->container->node.y +
             ((edges & WLR_EDGE_BOTTOM) ? geo_box->height : 0);
-        server->grab_x = server->cursor->x - border_x;
-        server->grab_y = server->cursor->y - border_y;
+        server->grab_x = server->cursor->x - (border_x * total_scale);
+        server->grab_y = server->cursor->y - (border_y * total_scale);
 
         server->grab_geobox = *geo_box;
-        server->grab_geobox.x += toplevel->scene_tree->node.x;
-        server->grab_geobox.y += toplevel->scene_tree->node.y;
+        server->grab_geobox.x = toplevel->container->node.x;
+        server->grab_geobox.y = toplevel->container->node.y;
 
         server->resize_edges = edges;
     }
@@ -121,8 +129,8 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
             toplevel->logical_y = new_y - (geo_box.height / 2.0);
 
             wlr_scene_node_set_position(&toplevel->container->node,
-                (int)(toplevel->logical_x * server->active_workspace->scale),
-                (int)(toplevel->logical_y * server->active_workspace->scale));
+                (int)(toplevel->logical_x),
+                (int)(toplevel->logical_y));
         }
     }
 
@@ -214,9 +222,8 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
     struct wlr_box geo = toplevel->xdg_toplevel->base->geometry;
     toplevel->base_width = geo.width;
     toplevel->base_height = geo.height;
-    double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
 
-    scale_toplevel(toplevel, scale);
+    scale_toplevel(toplevel);
 }
 
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
@@ -245,32 +252,18 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
     free(toplevel);
 }
 
-static void scale_buffer_iterator(struct wlr_scene_buffer *buffer, int sx, int sy, void *data) {
-    (void)sx;
-    (void)sy;
-    double scale = *(double *)data;
-
-    if (buffer->buffer) {
-        wlr_scene_buffer_set_dest_size(buffer,
-            buffer->buffer->width * scale,
-            buffer->buffer->height * scale);
-    }
-}
-
-void scale_toplevel(struct planar_toplevel *toplevel, double scale) {
+void scale_toplevel(struct planar_toplevel *toplevel) {
     if (!toplevel || !toplevel->container) return;
 
     wlr_scene_node_set_position(&toplevel->container->node,
-        (int)(toplevel->logical_x * scale),
-        (int)(toplevel->logical_y * scale));
-
-    wlr_scene_node_for_each_buffer(&toplevel->scene_tree->node, scale_buffer_iterator, &scale);
+        (int)(toplevel->logical_x),
+        (int)(toplevel->logical_y));
 
     int border = toplevel->server ? toplevel->server->settings.border_width : 4;
     wlr_scene_node_set_position(&toplevel->scene_tree->node, border, border);
 
     if (toplevel->decoration) {
-        decoration_update_geometry_scaled(toplevel->decoration, scale);
+        decoration_update_geometry(toplevel->decoration);
     }
 }
 

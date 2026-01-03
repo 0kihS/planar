@@ -245,10 +245,9 @@ void group_move_by(struct planar_group *group, double delta_x, double delta_y) {
         toplevel->logical_y += delta_y;
 
         // Update scene position
-        double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
         wlr_scene_node_set_position(&toplevel->container->node,
-            toplevel->logical_x * scale,
-            toplevel->logical_y * scale);
+            toplevel->logical_x,
+            toplevel->logical_y);
     }
 }
 
@@ -284,11 +283,10 @@ void group_move_to_workspace(struct planar_group *group, struct planar_workspace
         // Update workspace reference
         toplevel->workspace = target_ws;
 
-        // Rescale for new workspace
-        double scale = target_ws->scale;
+        // Position in new workspace
         wlr_scene_node_set_position(&toplevel->container->node,
-            toplevel->logical_x * scale,
-            toplevel->logical_y * scale);
+            toplevel->logical_x,
+            toplevel->logical_y);
     }
 }
 

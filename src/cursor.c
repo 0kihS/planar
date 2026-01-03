@@ -170,10 +170,6 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
 
     if (toplevel && toplevel->server) {
         if (surface) {
-            double scale = toplevel->workspace->scale;
-            sx /= scale;
-            sy /= scale;
-
             wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
             wlr_seat_pointer_notify_motion(seat, time, sx, sy);
         }
@@ -189,12 +185,17 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
 void process_cursor_move(struct planar_server *server, uint32_t time) {
     (void)time;
     struct planar_toplevel *toplevel = server->grabbed_toplevel;
-    double new_node_x = server->cursor->x - server->grab_x;
-    double new_node_y = server->cursor->y - server->grab_y;
-    double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
+    
+    // Find parent total scale
+    float total_scale = 1.0;
+    struct wlr_scene_node *it = toplevel->container->node.parent ? &toplevel->container->node.parent->node : NULL;
+    while (it) {
+        total_scale *= it->scale;
+        it = it->parent ? &it->parent->node : NULL;
+    }
 
-    double new_logical_x = new_node_x / scale;
-    double new_logical_y = new_node_y / scale;
+    double new_logical_x = (server->cursor->x - server->grab_x) / total_scale;
+    double new_logical_y = (server->cursor->y - server->grab_y) / total_scale;
 
     double delta_x = new_logical_x - toplevel->logical_x;
     double delta_y = new_logical_y - toplevel->logical_y;
@@ -208,19 +209,26 @@ void process_cursor_move(struct planar_server *server, uint32_t time) {
         toplevel->logical_y = new_logical_y;
 
         wlr_scene_node_set_position(&toplevel->container->node,
-            toplevel->logical_x * scale,
-            toplevel->logical_y * scale);
+            toplevel->logical_x,
+            toplevel->logical_y);
     }
 }
 
 void process_cursor_resize(struct planar_server *server, uint32_t time) {
 	(void)time;
 	struct planar_toplevel *toplevel = server->grabbed_toplevel;
-	double scale = toplevel->workspace ? toplevel->workspace->scale : 1.0;
 	int border = server->settings.border_width;
 
-	double border_x = server->cursor->x - server->grab_x;
-	double border_y = server->cursor->y - server->grab_y;
+	// Find parent total scale
+	float total_scale = 1.0;
+	struct wlr_scene_node *it = toplevel->container->node.parent ? &toplevel->container->node.parent->node : NULL;
+	while (it) {
+		total_scale *= it->scale;
+		it = it->parent ? &it->parent->node : NULL;
+	}
+
+	double border_x = (server->cursor->x - server->grab_x) / total_scale;
+	double border_y = (server->cursor->y - server->grab_y) / total_scale;
 
 	// grab_geobox holds the client area (inside borders)
 	int new_left = server->grab_geobox.x;
@@ -255,13 +263,13 @@ void process_cursor_resize(struct planar_server *server, uint32_t time) {
 	int container_x = new_left - border;
 	int container_y = new_top - border;
 
-	toplevel->logical_x = container_x / scale;
-	toplevel->logical_y = container_y / scale;
+	toplevel->logical_x = container_x;
+	toplevel->logical_y = container_y;
 
 	wlr_scene_node_set_position(&toplevel->container->node, container_x, container_y);
 
-	int new_width = (new_right - new_left) / scale;
-	int new_height = (new_bottom - new_top) / scale;
+	int new_width = (new_right - new_left);
+	int new_height = (new_bottom - new_top);
 	wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, new_width, new_height);
 }
 
@@ -346,8 +354,16 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
         if (toplevel) {
             server->cursor_mode = PLANAR_CURSOR_MOVE;
             server->grabbed_toplevel = toplevel;
-            server->grab_x = cx - toplevel->container->node.x;
-            server->grab_y = cy - toplevel->container->node.y;
+
+            float total_scale = 1.0;
+            struct wlr_scene_node *it = toplevel->container->node.parent ? &toplevel->container->node.parent->node : NULL;
+            while (it) {
+                total_scale *= it->scale;
+                it = it->parent ? &it->parent->node : NULL;
+            }
+
+            server->grab_x = cx - (toplevel->container->node.x * total_scale);
+            server->grab_y = cy - (toplevel->container->node.y * total_scale);
             return;
         }
     }
@@ -401,19 +417,25 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
 
             int border = server->settings.border_width;
             struct wlr_box *geo_box = &dec_toplevel->xdg_toplevel->base->geometry;
-            double scale = dec_toplevel->workspace ? dec_toplevel->workspace->scale : 1.0;
 
             // Client area starts at container + border
             int client_x = dec_toplevel->container->node.x + border;
             int client_y = dec_toplevel->container->node.y + border;
-            int client_w = geo_box->width * scale;
-            int client_h = geo_box->height * scale;
+            int client_w = geo_box->width;
+            int client_h = geo_box->height;
 
             double border_x = client_x + ((edges & WLR_EDGE_RIGHT) ? client_w : 0);
             double border_y = client_y + ((edges & WLR_EDGE_BOTTOM) ? client_h : 0);
 
-            server->grab_x = cx - border_x;
-            server->grab_y = cy - border_y;
+            float total_scale = 1.0;
+            struct wlr_scene_node *it = dec_toplevel->container->node.parent ? &dec_toplevel->container->node.parent->node : NULL;
+            while (it) {
+                total_scale *= it->scale;
+                it = it->parent ? &it->parent->node : NULL;
+            }
+
+            server->grab_x = cx - (border_x * total_scale);
+            server->grab_y = cy - (border_y * total_scale);
 
             server->grab_geobox.x = client_x;
             server->grab_geobox.y = client_y;

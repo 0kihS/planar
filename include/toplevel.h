@@ -37,7 +37,7 @@ struct planar_toplevel {
 void server_new_xdg_toplevel(struct wl_listener *listener, void *data);
 void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surface);
 void kill_active_toplevel(struct planar_server *server);
-void scale_toplevel(struct planar_toplevel *toplevel, double scale);
+void scale_toplevel(struct planar_toplevel *toplevel);
 struct planar_toplevel *find_toplevel_by_id(struct planar_server *server, const char *window_id);
 
 #endif // PLANAR_TOPLEVEL_H

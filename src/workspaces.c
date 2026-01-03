@@ -119,11 +119,7 @@ void update_workspace_scale(struct planar_server *server, double scale, double p
 
     wlr_scene_node_set_position(&ws->scene_tree->node,
         ws->global_offset.x, ws->global_offset.y);
-
-    struct planar_toplevel *toplevel;
-    wl_list_for_each(toplevel, &ws->toplevels, link) {
-        scale_toplevel(toplevel, scale);
-    }
+    wlr_scene_node_set_scale(&ws->scene_tree->node, scale);
 
     struct planar_output *output;
     wl_list_for_each(output, &server->outputs, link) {
