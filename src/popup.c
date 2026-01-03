@@ -2,7 +2,7 @@
 #include "server.h"
 #include <stdlib.h>
 #include <assert.h>
-#include <wlr/types/wlr_scene.h>
+#include <scenefx/types/wlr_scene.h>
 
 void xdg_popup_commit(struct wl_listener *listener, void *data) {
     (void)data;

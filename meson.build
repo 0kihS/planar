@@ -20,10 +20,14 @@ add_project_arguments(
 cc = meson.get_compiler('c')
 
 # Dependencies
-wlroots = dependency('wlroots-0.20')
+wlroots = dependency('wlroots-0.19')
 wayland_server = dependency('wayland-server')
 xkbcommon = dependency('xkbcommon')
 math = cc.find_library('m')
+
+# Subproject: scenefx (drop-in wlr_scene replacement with effects)
+scenefx_proj = subproject('scenefx')
+scenefx = scenefx_proj.get_variable('scenefx')
 
 # Subproject: tomlc99
 toml_dep = dependency('tomlc99', fallback: ['tomlc99', 'toml_dep'])
@@ -93,6 +97,7 @@ executable(
 	'planar',
 	src_files,
 	dependencies: [
+		scenefx,
 		wlroots,
 		wayland_server,
 		xkbcommon,

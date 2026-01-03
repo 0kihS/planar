@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <wlr/types/wlr_scene.h>
+#include <scenefx/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
 
 static uint32_t allocate_window_instance(struct planar_server *server, const char *app_id) {
@@ -290,7 +290,7 @@ void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
     toplevel->scene_tree = wlr_scene_xdg_surface_create(toplevel->container, xdg_toplevel->base);
     wlr_scene_node_set_position(&toplevel->scene_tree->node, border, border);
 
-    xdg_toplevel->base->data = toplevel->scene_tree;
+    xdg_toplevel->base->data = toplevel->container;
     toplevel->workspace = workspace;
     wl_list_insert(&workspace->toplevels, &toplevel->link);
 

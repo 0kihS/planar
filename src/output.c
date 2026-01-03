@@ -6,7 +6,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_output.h>
-#include <wlr/types/wlr_scene.h>
+#include <scenefx/types/wlr_scene.h>
 
 void output_frame(struct wl_listener *listener, void *data) {
     (void)data;

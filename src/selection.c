@@ -6,7 +6,7 @@
 #include "workspaces.h"
 
 #include <stdlib.h>
-#include <wlr/types/wlr_scene.h>
+#include <scenefx/types/wlr_scene.h>
 
 // Selection highlight color (cyan - distinct from group colors)
 static const float selection_color[4] = {0.0f, 0.85f, 0.85f, 1.0f};

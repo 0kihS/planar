@@ -1,7 +1,7 @@
 #ifndef PLANAR_DECORATION_H
 #define PLANAR_DECORATION_H
 
-#include <wlr/types/wlr_scene.h>
+#include <scenefx/types/wlr_scene.h>
 #include <wlr/util/edges.h>
 #include <stdbool.h>
 

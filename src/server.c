@@ -6,6 +6,7 @@
 #include "layers.h"
 #include "output.h"
 #include "popup.h"
+#include "scenefx/render/fx_renderer/fx_renderer.h"
 #include "seat.h"
 #include "toplevel.h"
 #include "workspaces.h"
@@ -17,7 +18,7 @@
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
-#include <wlr/types/wlr_scene.h>
+#include <scenefx/types/wlr_scene.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_viewporter.h>
@@ -98,7 +99,7 @@ void server_init(struct planar_server *server) {
 
     server->wl_display = wl_display_create();
     server->backend = wlr_backend_autocreate(wl_display_get_event_loop(server->wl_display), NULL);
-    server->renderer = wlr_renderer_autocreate(server->backend);
+    server->renderer = fx_renderer_create(server->backend);
     wlr_renderer_init_wl_display(server->renderer, server->wl_display);
 
     server->allocator = wlr_allocator_autocreate(server->backend, server->renderer);

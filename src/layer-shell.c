@@ -2,7 +2,7 @@
 
 #include <wlr/util/log.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
-#include <wlr/types/wlr_scene.h>
+#include <scenefx/types/wlr_scene.h>
 #include <wayland-util.h>
 
 #include "server.h"
