@@ -364,6 +364,44 @@ static void handle_get_command(struct planar_server *server, int client_fd,
     }
   } else if (strcmp(setting, "selection") == 0) {
     handle_get_selection(server, client_fd);
+  } else if (strcmp(setting, "nodecoration") == 0) {
+    char buf[IPC_BUFFER_SIZE];
+    char *ptr = buf;
+    int remaining = sizeof(buf);
+    int written;
+
+    written = snprintf(ptr, remaining, "[");
+    ptr += written;
+    remaining -= written;
+
+    for (size_t i = 0; i < server->window_rules.nodecoration_count; i++) {
+      written = snprintf(ptr, remaining, "%s\"%s\"",
+          i == 0 ? "" : ",",
+          server->window_rules.nodecoration[i]);
+      ptr += written;
+      remaining -= written;
+    }
+    snprintf(ptr, remaining, "]");
+    send_response(client_fd, true, buf);
+  } else if (strcmp(setting, "ontop") == 0) {
+    char buf[IPC_BUFFER_SIZE];
+    char *ptr = buf;
+    int remaining = sizeof(buf);
+    int written;
+
+    written = snprintf(ptr, remaining, "[");
+    ptr += written;
+    remaining -= written;
+
+    for (size_t i = 0; i < server->window_rules.ontop_count; i++) {
+      written = snprintf(ptr, remaining, "%s\"%s\"",
+          i == 0 ? "" : ",",
+          server->window_rules.ontop[i]);
+      ptr += written;
+      remaining -= written;
+    }
+    snprintf(ptr, remaining, "]");
+    send_response(client_fd, true, buf);
   } else {
     send_response(client_fd, false, "unknown setting");
   }
@@ -936,6 +974,36 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
   if (strcmp(cmd, "clear_selection") == 0) {
     selection_clear(server);
     return true;
+  }
+
+  if (strncmp(cmd, "rule ", 5) == 0) {
+    const char *subcmd = cmd + 5;
+
+    if (strncmp(subcmd, "nodecoration add ", 17) == 0) {
+      const char *app_id = subcmd + 17;
+      while (*app_id == ' ') app_id++;
+      return window_rules_add_nodecoration(server, app_id);
+    }
+
+    if (strncmp(subcmd, "nodecoration remove ", 20) == 0) {
+      const char *app_id = subcmd + 20;
+      while (*app_id == ' ') app_id++;
+      return window_rules_remove_nodecoration(server, app_id);
+    }
+
+    if (strncmp(subcmd, "ontop add ", 10) == 0) {
+      const char *app_id = subcmd + 10;
+      while (*app_id == ' ') app_id++;
+      return window_rules_add_ontop(server, app_id);
+    }
+
+    if (strncmp(subcmd, "ontop remove ", 13) == 0) {
+      const char *app_id = subcmd + 13;
+      while (*app_id == ' ') app_id++;
+      return window_rules_remove_ontop(server, app_id);
+    }
+
+    return false;
   }
 
   return false;

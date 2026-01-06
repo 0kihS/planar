@@ -1,6 +1,7 @@
 #ifndef PLANAR_SERVER_H
 #define PLANAR_SERVER_H
 
+#include <stdbool.h>
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
 #include <wlr/render/allocator.h>
@@ -115,6 +116,15 @@ struct planar_server {
 	} settings;
 
 	struct {
+		char **nodecoration;
+		size_t nodecoration_count;
+		size_t nodecoration_capacity;
+		char **ontop;
+		size_t ontop_count;
+		size_t ontop_capacity;
+	} window_rules;
+
+	struct {
 		char **app_ids;
 		uint32_t *counters;
 		size_t count;
@@ -124,6 +134,13 @@ struct planar_server {
 
 void convert_scene_coords_to_global(struct planar_server *server, double *x, double *y);
 void convert_global_coords_to_scene(struct planar_server *server, double *x, double *y);
+
+bool window_rules_has_nodecoration(struct planar_server *server, const char *app_id);
+bool window_rules_has_ontop(struct planar_server *server, const char *app_id);
+bool window_rules_add_nodecoration(struct planar_server *server, const char *app_id);
+bool window_rules_remove_nodecoration(struct planar_server *server, const char *app_id);
+bool window_rules_add_ontop(struct planar_server *server, const char *app_id);
+bool window_rules_remove_ontop(struct planar_server *server, const char *app_id);
 
 void server_init(struct planar_server *server);
 void server_run(struct planar_server *server);

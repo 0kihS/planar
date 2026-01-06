@@ -140,6 +140,39 @@ struct config *config_load(const char *path) {
         }
     }
 
+    toml_table_t *rules = toml_table_in(conf, "rules");
+    if (rules) {
+        toml_array_t *nodec = toml_array_in(rules, "nodecoration");
+        if (nodec) {
+            int n = toml_array_nelem(nodec);
+            if (n > 0) {
+                config->nodecoration = calloc(n, sizeof(char *));
+                for (int i = 0; i < n; i++) {
+                    toml_datum_t elem = toml_string_at(nodec, i);
+                    if (elem.ok) {
+                        config->nodecoration[config->nodecoration_count++] = strdup(elem.u.s);
+                        free(elem.u.s);
+                    }
+                }
+            }
+        }
+
+        toml_array_t *ontop = toml_array_in(rules, "ontop");
+        if (ontop) {
+            int n = toml_array_nelem(ontop);
+            if (n > 0) {
+                config->ontop = calloc(n, sizeof(char *));
+                for (int i = 0; i < n; i++) {
+                    toml_datum_t elem = toml_string_at(ontop, i);
+                    if (elem.ok) {
+                        config->ontop[config->ontop_count++] = strdup(elem.u.s);
+                        free(elem.u.s);
+                    }
+                }
+            }
+        }
+    }
+
     toml_free(conf);
     return config;
 }
@@ -151,6 +184,14 @@ void config_destroy(struct config *config) {
     for (int i = 0; i < config->num_keybindings; i++) {
         free(config->keybindings[i].command);
     }
+    for (size_t i = 0; i < config->nodecoration_count; i++) {
+        free(config->nodecoration[i]);
+    }
+    free(config->nodecoration);
+    for (size_t i = 0; i < config->ontop_count; i++) {
+        free(config->ontop[i]);
+    }
+    free(config->ontop);
     free(config);
 }
 

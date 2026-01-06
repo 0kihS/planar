@@ -135,10 +135,14 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
         }
     }
 
-    toplevel->decoration = decoration_create(toplevel);
-    if (toplevel->decoration) {
-        decoration_update_geometry(toplevel->decoration);
+    if (!window_rules_has_nodecoration(server, toplevel->xdg_toplevel->app_id)) {
+        toplevel->decoration = decoration_create(toplevel);
+        if (toplevel->decoration) {
+            decoration_update_geometry(toplevel->decoration);
+        }
     }
+
+    scale_toplevel(toplevel);
 
     focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
 
@@ -285,7 +289,7 @@ void scale_toplevel(struct planar_toplevel *toplevel) {
         (int)(toplevel->logical_x),
         (int)(toplevel->logical_y));
 
-    int border = toplevel->server ? toplevel->server->settings.border_width : 4;
+    int border = toplevel->decoration ? toplevel->server->settings.border_width : 0;
     wlr_scene_node_set_position(&toplevel->scene_tree->node, border, border);
 
     if (toplevel->decoration) {
@@ -362,6 +366,15 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
 
     wl_list_remove(&toplevel->link);
     wl_list_insert(&toplevel->workspace->toplevels, &toplevel->link);
+
+    // Ensure windows with ontop rule stay on top
+    struct planar_toplevel *t;
+    wl_list_for_each(t, &server->active_workspace->toplevels, link) {
+        if (t != toplevel && t->xdg_toplevel->app_id &&
+            window_rules_has_ontop(server, t->xdg_toplevel->app_id)) {
+            wlr_scene_node_raise_to_top(&t->container->node);
+        }
+    }
 
     wlr_xdg_toplevel_set_activated(toplevel->xdg_toplevel, true);
 

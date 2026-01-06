@@ -14,6 +14,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_data_device.h>
@@ -35,6 +36,91 @@ void convert_scene_coords_to_global(struct planar_server *server, double *x, dou
 void convert_global_coords_to_scene(struct planar_server *server, double *x, double *y) {
     *x -= server->active_workspace->global_offset.x;
     *y -= server->active_workspace->global_offset.y;
+}
+
+static bool app_id_matches(const char *pattern, const char *app_id) {
+    if (!pattern || !app_id) return false;
+    return strcmp(pattern, app_id) == 0;
+}
+
+bool window_rules_has_nodecoration(struct planar_server *server, const char *app_id) {
+    if (!app_id) return false;
+    for (size_t i = 0; i < server->window_rules.nodecoration_count; i++) {
+        if (app_id_matches(server->window_rules.nodecoration[i], app_id)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool window_rules_has_ontop(struct planar_server *server, const char *app_id) {
+    if (!app_id) return false;
+    for (size_t i = 0; i < server->window_rules.ontop_count; i++) {
+        if (app_id_matches(server->window_rules.ontop[i], app_id)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool window_rules_add_nodecoration(struct planar_server *server, const char *app_id) {
+    if (!app_id || window_rules_has_nodecoration(server, app_id)) return false;
+
+    if (server->window_rules.nodecoration_count >= server->window_rules.nodecoration_capacity) {
+        size_t new_cap = server->window_rules.nodecoration_capacity == 0 ? 8 : server->window_rules.nodecoration_capacity * 2;
+        char **new_arr = realloc(server->window_rules.nodecoration, new_cap * sizeof(char *));
+        if (!new_arr) return false;
+        server->window_rules.nodecoration = new_arr;
+        server->window_rules.nodecoration_capacity = new_cap;
+    }
+
+    server->window_rules.nodecoration[server->window_rules.nodecoration_count++] = strdup(app_id);
+    return true;
+}
+
+bool window_rules_remove_nodecoration(struct planar_server *server, const char *app_id) {
+    if (!app_id) return false;
+    for (size_t i = 0; i < server->window_rules.nodecoration_count; i++) {
+        if (app_id_matches(server->window_rules.nodecoration[i], app_id)) {
+            free(server->window_rules.nodecoration[i]);
+            for (size_t j = i; j < server->window_rules.nodecoration_count - 1; j++) {
+                server->window_rules.nodecoration[j] = server->window_rules.nodecoration[j + 1];
+            }
+            server->window_rules.nodecoration_count--;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool window_rules_add_ontop(struct planar_server *server, const char *app_id) {
+    if (!app_id || window_rules_has_ontop(server, app_id)) return false;
+
+    if (server->window_rules.ontop_count >= server->window_rules.ontop_capacity) {
+        size_t new_cap = server->window_rules.ontop_capacity == 0 ? 8 : server->window_rules.ontop_capacity * 2;
+        char **new_arr = realloc(server->window_rules.ontop, new_cap * sizeof(char *));
+        if (!new_arr) return false;
+        server->window_rules.ontop = new_arr;
+        server->window_rules.ontop_capacity = new_cap;
+    }
+
+    server->window_rules.ontop[server->window_rules.ontop_count++] = strdup(app_id);
+    return true;
+}
+
+bool window_rules_remove_ontop(struct planar_server *server, const char *app_id) {
+    if (!app_id) return false;
+    for (size_t i = 0; i < server->window_rules.ontop_count; i++) {
+        if (app_id_matches(server->window_rules.ontop[i], app_id)) {
+            free(server->window_rules.ontop[i]);
+            for (size_t j = i; j < server->window_rules.ontop_count - 1; j++) {
+                server->window_rules.ontop[j] = server->window_rules.ontop[j + 1];
+            }
+            server->window_rules.ontop_count--;
+            return true;
+        }
+    }
+    return false;
 }
 
 struct decoration_listeners {
@@ -225,6 +311,24 @@ void server_init(struct planar_server *server) {
     server->window_id_tracker.count = 0;
     server->window_id_tracker.capacity = 0;
 
+    /* Initialize window rules */
+    server->window_rules.nodecoration = NULL;
+    server->window_rules.nodecoration_count = 0;
+    server->window_rules.nodecoration_capacity = 0;
+    server->window_rules.ontop = NULL;
+    server->window_rules.ontop_count = 0;
+    server->window_rules.ontop_capacity = 0;
+
+    /* Apply window rules from config */
+    if (server->config) {
+        for (size_t i = 0; i < server->config->nodecoration_count; i++) {
+            window_rules_add_nodecoration(server, server->config->nodecoration[i]);
+        }
+        for (size_t i = 0; i < server->config->ontop_count; i++) {
+            window_rules_add_ontop(server, server->config->ontop[i]);
+        }
+    }
+
     /* Initialize IPC */
     if (!ipc_init(server)) {
         wlr_log(WLR_ERROR, "Failed to initialize IPC");
@@ -262,6 +366,16 @@ void server_finish(struct planar_server *server) {
     }
     free(server->window_id_tracker.app_ids);
     free(server->window_id_tracker.counters);
+
+    /* Cleanup window rules */
+    for (size_t i = 0; i < server->window_rules.nodecoration_count; i++) {
+        free(server->window_rules.nodecoration[i]);
+    }
+    free(server->window_rules.nodecoration);
+    for (size_t i = 0; i < server->window_rules.ontop_count; i++) {
+        free(server->window_rules.ontop[i]);
+    }
+    free(server->window_rules.ontop);
 
     struct planar_workspace *workspace, *tmp_ws;
     wl_list_for_each_safe(workspace, tmp_ws, &server->workspaces, link) {

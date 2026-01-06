@@ -19,6 +19,11 @@ struct config {
     char *startup_cmd;
     struct keybinding keybindings[MAX_KEYBINDINGS];
     int num_keybindings;
+
+    char **nodecoration;
+    size_t nodecoration_count;
+    char **ontop;
+    size_t ontop_count;
 };
 
 struct config *config_load(const char *path);
