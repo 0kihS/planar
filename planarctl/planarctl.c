@@ -41,7 +41,9 @@ static void print_usage(const char *prog) {
     fprintf(stderr, "                              Move entire group to position\n");
     fprintf(stderr, "  group color <group_id> <R G B A>\n");
     fprintf(stderr, "                              Set group border color\n");
+    fprintf(stderr, "  group tile <group_id>       Tile all windows in a group\n");
     fprintf(stderr, "  group create_from_selection Create group from current selection\n");
+    fprintf(stderr, "  tile_focused_group          Tile the group of the focused window\n");
     fprintf(stderr, "\nSelection Commands:\n");
     fprintf(stderr, "  select add <window_id>      Add window to selection\n");
     fprintf(stderr, "  select remove <window_id>   Remove window from selection\n");

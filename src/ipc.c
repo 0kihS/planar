@@ -27,19 +27,27 @@ static void ipc_client_destroy(struct ipc_client *client) {
 }
 
 static void send_response(int fd, bool ok, const char *data) {
-  char buf[IPC_BUFFER_SIZE];
+  int data_len = data ? (int)strlen(data) : 0;
+  /* JSON wrapping adds ~40 bytes overhead */
+  int buf_size = data_len + 64;
+  char *buf = malloc(buf_size);
+  if (!buf) return;
+
   int len;
   if (ok) {
     if (data) {
-      len = snprintf(buf, sizeof(buf), "{\"ok\":true,\"data\":%s}\n", data);
+      len = snprintf(buf, buf_size, "{\"ok\":true,\"data\":%s}\n", data);
     } else {
-      len = snprintf(buf, sizeof(buf), "{\"ok\":true}\n");
+      len = snprintf(buf, buf_size, "{\"ok\":true}\n");
     }
   } else {
-    len = snprintf(buf, sizeof(buf), "{\"ok\":false,\"error\":\"%s\"}\n",
+    len = snprintf(buf, buf_size, "{\"ok\":false,\"error\":\"%s\"}\n",
                    data ? data : "unknown error");
   }
-  write(fd, buf, len);
+  if (len > 0) {
+    write(fd, buf, len);
+  }
+  free(buf);
 }
 
 static void handle_get_workspaces(struct planar_server *server, int client_fd) {
@@ -833,10 +841,66 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
     return handle_send_keys(server, cmd + 10);
   }
 
+  if (strcmp(cmd, "select_focused") == 0) {
+    struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+    if (!focused) return false;
+    struct planar_workspace *ws = server->active_workspace;
+    struct planar_toplevel *t;
+    wl_list_for_each(t, &ws->toplevels, link) {
+      if (t->xdg_toplevel->base->surface == focused) {
+        selection_toggle(server, t);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (strcmp(cmd, "tile_focused_group") == 0) {
+    struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+    if (!focused) return false;
+    
+    struct wlr_xdg_toplevel *xdg = wlr_xdg_toplevel_try_from_wlr_surface(focused);
+    if (!xdg) return false;
+    
+    /* container->data points to toplevel */
+    /* Need to find the planar_toplevel from the surface */
+    struct planar_workspace *ws = server->active_workspace;
+    struct planar_toplevel *toplevel;
+    wl_list_for_each(toplevel, &ws->toplevels, link) {
+      if (toplevel->xdg_toplevel->base->surface == focused) {
+        if (toplevel->group) {
+          /* Tile the group */
+          struct planar_group *group = toplevel->group;
+          double base_x = toplevel->logical_x;
+          double base_y = toplevel->logical_y;
+
+          struct planar_group_member *member;
+          double x = base_x;
+          wl_list_for_each(member, &group->members, link) {
+            struct planar_toplevel *t = member->toplevel;
+            double win_w = t->decoration ? t->decoration->width : 100;
+            
+            t->logical_x = x;
+            t->logical_y = base_y;
+            scale_toplevel(t);
+            
+            x += win_w + 10;
+          }
+          
+          group_recalculate_offsets(group);
+          group_update_decorations(group);
+          return true;
+        }
+        return false;
+      }
+    }
+    return false;
+  }
+
   if (strncmp(cmd, "group ", 6) == 0) {
     const char *subcmd = cmd + 6;
 
-    if (strncmp(subcmd, "create", 6) == 0) {
+    if (strncmp(subcmd, "create", 6) == 0 && (subcmd[6] == ' ' || subcmd[6] == '\0')) {
       const char *name = subcmd + 6;
       while (*name == ' ') name++;
       struct planar_group *group = group_create(server, *name ? name : NULL);
@@ -914,6 +978,37 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
     if (strcmp(subcmd, "create_from_selection") == 0) {
       struct planar_group *group = selection_create_group(server);
       return group != NULL;
+    }
+
+    if (strncmp(subcmd, "tile ", 5) == 0) {
+      const char *group_id = subcmd + 5;
+      while (*group_id == ' ') group_id++;
+      struct planar_group *group = find_group_by_id(server, group_id);
+      if (!group || group_member_count(group) == 0) return false;
+
+      /* Get the anchor position */
+      struct planar_toplevel *anchor = group_get_anchor(group);
+      if (!anchor) return false;
+      double base_x = anchor->logical_x;
+      double base_y = anchor->logical_y;
+
+      /* Tile members horizontally from anchor */
+      struct planar_group_member *member;
+      double x = base_x;
+      wl_list_for_each(member, &group->members, link) {
+        struct planar_toplevel *t = member->toplevel;
+        double win_w = t->decoration ? t->decoration->width : 100;
+        
+        t->logical_x = x;
+        t->logical_y = base_y;
+        scale_toplevel(t);
+        
+        x += win_w + 10; /* 10px gap */
+      }
+      
+      group_recalculate_offsets(group);
+      group_update_decorations(group);
+      return true;
     }
 
     return false;

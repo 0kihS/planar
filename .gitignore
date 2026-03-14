@@ -56,3 +56,16 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Builds
+build/
+.cache/
+subprojects/.wraplock
+
+# Local files
+output.mp4
+plan.md
+
+# Separate projects
+scripts/
+ui/
