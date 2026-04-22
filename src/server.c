@@ -178,6 +178,18 @@ static void server_new_output(struct wl_listener *listener, void *data) {
     output_create(listener, wlr_output);
 }
 
+#if WLR_HAS_XWAYLAND
+static void server_xwayland_ready(struct wl_listener *listener, void *data) {
+    (void)data;
+    struct planar_server *server = wl_container_of(listener, server, xwayland_ready);
+    wlr_xwayland_set_seat(server->xwayland, server->seat);
+
+    if (server->xwayland->display_name) {
+        setenv("DISPLAY", server->xwayland->display_name, true);
+    }
+}
+#endif
+
 void server_init(struct planar_server *server) {
     wl_list_init(&server->ipc_clients);
     wl_list_init(&server->ipc_event_clients);
@@ -191,7 +203,7 @@ void server_init(struct planar_server *server) {
 
     server->allocator = wlr_allocator_autocreate(server->backend, server->renderer);
 
-    wlr_compositor_create(server->wl_display, 5, server->renderer);
+    server->compositor = wlr_compositor_create(server->wl_display, 5, server->renderer);
     wlr_subcompositor_create(server->wl_display);
     wlr_data_device_manager_create(server->wl_display);
     wlr_screencopy_manager_v1_create(server->wl_display);
@@ -216,6 +228,21 @@ void server_init(struct planar_server *server) {
 
     server->xdg_shell = wlr_xdg_shell_create(server->wl_display, 3);
     assert(server->xdg_shell);
+
+#if WLR_HAS_XWAYLAND
+    server->xwayland = wlr_xwayland_create(server->wl_display, server->compositor, true);
+    if (server->xwayland) {
+        server->new_xwayland_surface.notify = server_new_xwayland_surface;
+        wl_signal_add(&server->xwayland->events.new_surface, &server->new_xwayland_surface);
+
+        server->xwayland_ready.notify = server_xwayland_ready;
+        wl_signal_add(&server->xwayland->events.ready, &server->xwayland_ready);
+
+        if (server->xwayland->display_name) {
+            setenv("DISPLAY", server->xwayland->display_name, true);
+        }
+    }
+#endif
 
     server->xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server->wl_display);
 
@@ -270,6 +297,12 @@ void server_init(struct planar_server *server) {
     wl_signal_add(&server->backend->events.new_input, &server->new_input);
 
     seat_init(server);
+
+#if WLR_HAS_XWAYLAND
+    if (server->xwayland) {
+        wlr_xwayland_set_seat(server->xwayland, server->seat);
+    }
+#endif
 
     struct planar_workspace *workspace;
     wl_list_for_each(workspace, &server->workspaces, link) {
@@ -359,6 +392,13 @@ void server_finish(struct planar_server *server) {
     wl_list_remove(&server->new_xdg_toplevel.link);
     wl_list_remove(&server->new_xdg_popup.link);
     wl_list_remove(&server->new_layer_shell_surface.link);
+#if WLR_HAS_XWAYLAND
+    if (server->xwayland) {
+        wl_list_remove(&server->new_xwayland_surface.link);
+        wl_list_remove(&server->xwayland_ready.link);
+        wlr_xwayland_destroy(server->xwayland);
+    }
+#endif
 
     /* Cleanup window ID tracker */
     for (size_t i = 0; i < server->window_id_tracker.count; i++) {

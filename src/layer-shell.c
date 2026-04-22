@@ -200,29 +200,18 @@ struct planar_layer_surface *layer_surface_at(struct planar_server *server, doub
     }
 
     *surface = scene_surface->surface;
-
-    // Walk up the scene tree to find the first node with data
-    struct wlr_scene_tree *tree = node->parent;
-    while (tree != NULL && tree->node.data == NULL) {
-        tree = tree->node.parent;
-    }
-    
-    // If we found no tree with data, or if the data isn't a layer surface, return NULL
-    if (tree == NULL || !tree->node.data) {
+    struct wlr_surface *root_surface = wlr_surface_get_root_surface(scene_surface->surface);
+    if (!root_surface) {
         return NULL;
     }
-    
-    // Check if this is actually a layer surface by verifying it's in one of our layer trees
-    struct planar_layer_surface *layer_surface = tree->node.data;
-    struct wlr_scene_tree *parent = tree;
-    while (parent != NULL) {
-            if (parent == server->layers[0] || parent == server->layers[3]) {
-                return layer_surface;  // It's in a layer tree, so it's a layer surface
-            }
-        parent = parent->node.parent;
+
+    struct wlr_layer_surface_v1 *layer_surface =
+        wlr_layer_surface_v1_try_from_wlr_surface(root_surface);
+    if (!layer_surface) {
+        return NULL;
     }
-    
-    return NULL;  // Not in any layer tree, so not a layer surface
+
+    return layer_surface->data;
 }
 
 void focus_layer_surface(struct planar_layer_surface *layer_surface, struct wlr_surface *surface) {
@@ -230,9 +219,10 @@ void focus_layer_surface(struct planar_layer_surface *layer_surface, struct wlr_
         return;
     }
     struct wlr_seat *seat = layer_surface->server->seat;
+    struct wlr_surface *root_surface = surface ? wlr_surface_get_root_surface(surface) : NULL;
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
-    if (keyboard) {
-        wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes,
+    if (keyboard && root_surface) {
+        wlr_seat_keyboard_notify_enter(seat, root_surface, keyboard->keycodes,
                                        keyboard->num_keycodes, &keyboard->modifiers);
     }
 }

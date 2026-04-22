@@ -95,13 +95,15 @@ static void handle_get_windows(struct planar_server *server, int client_fd) {
   wl_list_for_each(ws, &server->workspaces, link) {
     struct planar_toplevel *toplevel;
     wl_list_for_each(toplevel, &ws->toplevels, link) {
-      if (!toplevel->xdg_toplevel->base->surface->mapped) continue;
+      if (!toplevel_is_mapped(toplevel)) continue;
 
-      const char *app_id = toplevel->xdg_toplevel->app_id ? toplevel->xdg_toplevel->app_id : "";
-      const char *title = toplevel->xdg_toplevel->title ? toplevel->xdg_toplevel->title : "";
-      int width = toplevel->decoration ? toplevel->decoration->width : 0;
-      int height = toplevel->decoration ? toplevel->decoration->height : 0;
-      bool is_focused = (toplevel->xdg_toplevel->base->surface == focused_surface);
+      const char *app_id = toplevel_get_app_id(toplevel) ? toplevel_get_app_id(toplevel) : "";
+      const char *title = toplevel_get_title(toplevel) ? toplevel_get_title(toplevel) : "";
+      struct wlr_box geo;
+      toplevel_get_geometry(toplevel, &geo);
+      int width = toplevel->decoration ? toplevel->decoration->width : geo.width;
+      int height = toplevel->decoration ? toplevel->decoration->height : geo.height;
+      bool is_focused = (toplevel_get_surface(toplevel) == focused_surface);
 
       const char *group_id = toplevel->group ? toplevel->group->group_id : NULL;
       written = snprintf(ptr, remaining,
@@ -137,11 +139,13 @@ static void handle_get_window(struct planar_server *server, int client_fd, const
   }
 
   struct wlr_surface *focused_surface = server->seat->keyboard_state.focused_surface;
-  const char *app_id = toplevel->xdg_toplevel->app_id ? toplevel->xdg_toplevel->app_id : "";
-  const char *title = toplevel->xdg_toplevel->title ? toplevel->xdg_toplevel->title : "";
-  int width = toplevel->decoration ? toplevel->decoration->width : 0;
-  int height = toplevel->decoration ? toplevel->decoration->height : 0;
-  bool is_focused = (toplevel->xdg_toplevel->base->surface == focused_surface);
+  const char *app_id = toplevel_get_app_id(toplevel) ? toplevel_get_app_id(toplevel) : "";
+  const char *title = toplevel_get_title(toplevel) ? toplevel_get_title(toplevel) : "";
+  struct wlr_box geo;
+  toplevel_get_geometry(toplevel, &geo);
+  int width = toplevel->decoration ? toplevel->decoration->width : geo.width;
+  int height = toplevel->decoration ? toplevel->decoration->height : geo.height;
+  bool is_focused = (toplevel_get_surface(toplevel) == focused_surface);
   const char *group_id = toplevel->group ? toplevel->group->group_id : NULL;
 
   char buf[IPC_BUFFER_SIZE];
@@ -163,40 +167,32 @@ static void handle_get_window(struct planar_server *server, int client_fd, const
 }
 
 static void handle_get_focused(struct planar_server *server, int client_fd) {
-  struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
-  if (!focused) {
+  struct planar_toplevel *toplevel =
+      find_toplevel_by_surface(server, server->seat->keyboard_state.focused_surface);
+  if (!toplevel) {
     send_response(client_fd, true, "null");
     return;
   }
 
-  struct planar_workspace *ws;
-  wl_list_for_each(ws, &server->workspaces, link) {
-    struct planar_toplevel *toplevel;
-    wl_list_for_each(toplevel, &ws->toplevels, link) {
-      if (toplevel->xdg_toplevel->base->surface == focused) {
-        const char *app_id = toplevel->xdg_toplevel->app_id ? toplevel->xdg_toplevel->app_id : "";
-        const char *title = toplevel->xdg_toplevel->title ? toplevel->xdg_toplevel->title : "";
-        int width = toplevel->decoration ? toplevel->decoration->width : 0;
-        int height = toplevel->decoration ? toplevel->decoration->height : 0;
+  const char *app_id = toplevel_get_app_id(toplevel) ? toplevel_get_app_id(toplevel) : "";
+  const char *title = toplevel_get_title(toplevel) ? toplevel_get_title(toplevel) : "";
+  struct wlr_box geo;
+  toplevel_get_geometry(toplevel, &geo);
+  int width = toplevel->decoration ? toplevel->decoration->width : geo.width;
+  int height = toplevel->decoration ? toplevel->decoration->height : geo.height;
 
-        char buf[IPC_BUFFER_SIZE];
-        snprintf(buf, sizeof(buf),
-            "{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\","
-            "\"workspace\":%d,\"geometry\":{\"x\":%.0f,\"y\":%.0f,"
-            "\"width\":%d,\"height\":%d}}",
-            toplevel->window_id ? toplevel->window_id : "",
-            app_id, title,
-            ws->index + 1,
-            toplevel->logical_x, toplevel->logical_y,
-            width, height);
+  char buf[IPC_BUFFER_SIZE];
+  snprintf(buf, sizeof(buf),
+      "{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\","
+      "\"workspace\":%d,\"geometry\":{\"x\":%.0f,\"y\":%.0f,"
+      "\"width\":%d,\"height\":%d}}",
+      toplevel->window_id ? toplevel->window_id : "",
+      app_id, title,
+      toplevel->workspace->index + 1,
+      toplevel->logical_x, toplevel->logical_y,
+      width, height);
 
-        send_response(client_fd, true, buf);
-        return;
-      }
-    }
-  }
-
-  send_response(client_fd, true, "null");
+  send_response(client_fd, true, buf);
 }
 
 static void handle_get_groups(struct planar_server *server, int client_fd) {
@@ -492,7 +488,7 @@ static bool handle_send_keys(struct planar_server *server, const char *args) {
   if (toplevel->workspace != server->active_workspace) {
     switch_to_workspace(server, toplevel->workspace->index);
   }
-  focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
+  focus_toplevel(toplevel, toplevel_get_surface(toplevel));
 
   // Get keyboard
   struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
@@ -689,7 +685,7 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
       if (toplevel->workspace != server->active_workspace) {
         switch_to_workspace(server, toplevel->workspace->index);
       }
-      focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
+      focus_toplevel(toplevel, toplevel_get_surface(toplevel));
       return true;
     }
     return false;
@@ -699,7 +695,7 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
     const char *window_id = cmd + 13;
     struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
     if (toplevel) {
-      wlr_xdg_toplevel_send_close(toplevel->xdg_toplevel);
+      toplevel_close(toplevel);
       return true;
     }
     return false;
@@ -711,10 +707,7 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
     if (sscanf(cmd + 12, "%255s %lf %lf", window_id, &x, &y) == 3) {
       struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
       if (toplevel) {
-        toplevel->logical_x = x;
-        toplevel->logical_y = y;
-        wlr_scene_node_set_position(&toplevel->container->node,
-            (int)x, (int)y);
+        move_toplevel(toplevel, x, y);
         return true;
       }
     }
@@ -727,7 +720,7 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
     if (sscanf(cmd + 14, "%255s %d %d", window_id, &width, &height) == 3) {
       struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
       if (toplevel && width > 0 && height > 0) {
-        wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, width, height);
+        toplevel_set_size(toplevel, width, height);
         return true;
       }
     }
@@ -800,7 +793,7 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
       int new_offset_y = (int)(screen_center_y - win_center_y * ws->scale);
 
       set_workspace_offset(server, new_offset_x, new_offset_y);
-      focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
+      focus_toplevel(toplevel, toplevel_get_surface(toplevel));
       return true;
     }
     return false;
@@ -844,13 +837,10 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
   if (strcmp(cmd, "select_focused") == 0) {
     struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
     if (!focused) return false;
-    struct planar_workspace *ws = server->active_workspace;
-    struct planar_toplevel *t;
-    wl_list_for_each(t, &ws->toplevels, link) {
-      if (t->xdg_toplevel->base->surface == focused) {
-        selection_toggle(server, t);
-        return true;
-      }
+    struct planar_toplevel *toplevel = find_toplevel_by_surface(server, focused);
+    if (toplevel) {
+      selection_toggle(server, toplevel);
+      return true;
     }
     return false;
   }
@@ -858,41 +848,26 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
   if (strcmp(cmd, "tile_focused_group") == 0) {
     struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
     if (!focused) return false;
-    
-    struct wlr_xdg_toplevel *xdg = wlr_xdg_toplevel_try_from_wlr_surface(focused);
-    if (!xdg) return false;
-    
-    /* container->data points to toplevel */
-    /* Need to find the planar_toplevel from the surface */
-    struct planar_workspace *ws = server->active_workspace;
-    struct planar_toplevel *toplevel;
-    wl_list_for_each(toplevel, &ws->toplevels, link) {
-      if (toplevel->xdg_toplevel->base->surface == focused) {
-        if (toplevel->group) {
-          /* Tile the group */
-          struct planar_group *group = toplevel->group;
-          double base_x = toplevel->logical_x;
-          double base_y = toplevel->logical_y;
 
-          struct planar_group_member *member;
-          double x = base_x;
-          wl_list_for_each(member, &group->members, link) {
-            struct planar_toplevel *t = member->toplevel;
-            double win_w = t->decoration ? t->decoration->width : 100;
-            
-            t->logical_x = x;
-            t->logical_y = base_y;
-            scale_toplevel(t);
-            
-            x += win_w + 10;
-          }
-          
-          group_recalculate_offsets(group);
-          group_update_decorations(group);
-          return true;
-        }
-        return false;
+    struct planar_toplevel *toplevel = find_toplevel_by_surface(server, focused);
+    if (toplevel && toplevel->group) {
+      struct planar_group *group = toplevel->group;
+      double base_x = toplevel->logical_x;
+      double base_y = toplevel->logical_y;
+
+      struct planar_group_member *member;
+      double x = base_x;
+      wl_list_for_each(member, &group->members, link) {
+        struct planar_toplevel *t = member->toplevel;
+        double win_w = t->decoration ? t->decoration->width : 100;
+
+        move_toplevel(t, x, base_y);
+        x += win_w + 10;
       }
+
+      group_recalculate_offsets(group);
+      group_update_decorations(group);
+      return true;
     }
     return false;
   }

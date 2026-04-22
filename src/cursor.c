@@ -80,16 +80,7 @@ static struct planar_toplevel *desktop_toplevel_at(
 	}
 
 	*surface = scene_surface->surface;
-	/* Find the node corresponding to the planar_toplevel at the root of this
-	 * surface tree, it is the only one for which we set the data field. */
-	struct wlr_scene_tree *tree = node->parent;
-	while (tree != NULL && tree->node.data == NULL) {
-		tree = tree->node.parent;
-	}
-	if (tree == NULL) {
-		return NULL;
-	}
-	return tree->node.data;
+	return find_toplevel_by_surface(server, scene_surface->surface);
 }
 
 void cursor_init(struct planar_server *server) {
@@ -170,12 +161,14 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
             cx, cy, &surface, &sx, &sy);
 
     if (toplevel && toplevel->server) {
-        if (surface) {
-            // Reset cursor to default when entering a surface from decoration
-            wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
-            wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
-            wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-        }
+        // Reset cursor to default when entering a surface from decoration
+        wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
+        wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+        wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+    } else if (surface) {
+        wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
+        wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+        wlr_seat_pointer_notify_motion(seat, time, sx, sy);
     } else {
         /* If there's no toplevel under the cursor, set the cursor image to a
          * default. This is what makes the cursor image appear when you move it
@@ -260,12 +253,7 @@ void process_cursor_move(struct planar_server *server, uint32_t time) {
     } else if (is_group_move) {
         group_move_by(toplevel->group, delta_x, delta_y);
     } else {
-        toplevel->logical_x = new_logical_x;
-        toplevel->logical_y = new_logical_y;
-
-        wlr_scene_node_set_position(&toplevel->container->node,
-            toplevel->logical_x,
-            toplevel->logical_y);
+        move_toplevel(toplevel, new_logical_x, new_logical_y);
     }
 }
 
@@ -315,7 +303,7 @@ void process_cursor_resize(struct planar_server *server, uint32_t time) {
 
 	int new_width = (new_right - new_left);
 	int new_height = (new_bottom - new_top);
-	wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, new_width, new_height);
+	toplevel_set_size(toplevel, new_width, new_height);
 }
 
 static void server_cursor_motion(struct wl_listener *listener, void *data) {
@@ -456,7 +444,7 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
         uint32_t edges;
         struct planar_toplevel *dec_toplevel = toplevel_decoration_at(server, cx, cy, &edge_result, &edges);
         if (dec_toplevel) {
-            focus_toplevel(dec_toplevel, dec_toplevel->xdg_toplevel->base->surface);
+            focus_toplevel(dec_toplevel, toplevel_get_surface(dec_toplevel));
 
             // Border - begin resize
             server->cursor_mode = PLANAR_CURSOR_RESIZE;
@@ -464,13 +452,14 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
             server->resize_edges = edges;
 
             int border = server->settings.border_width;
-            struct wlr_box *geo_box = &dec_toplevel->xdg_toplevel->base->geometry;
+            struct wlr_box geo_box;
+            toplevel_get_geometry(dec_toplevel, &geo_box);
 
             // Client area starts at container + border
             int client_x = dec_toplevel->container->node.x + border;
             int client_y = dec_toplevel->container->node.y + border;
-            int client_w = geo_box->width;
-            int client_h = geo_box->height;
+            int client_w = geo_box.width;
+            int client_h = geo_box.height;
 
             double border_x = client_x + ((edges & WLR_EDGE_RIGHT) ? client_w : 0);
             double border_y = client_y + ((edges & WLR_EDGE_BOTTOM) ? client_h : 0);
@@ -508,6 +497,11 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
                 selection_clear(server);
             }
             focus_toplevel(toplevel, surface);
+        } else if (surface) {
+            if (!shift_held) {
+                selection_clear(server);
+            }
+            return;
         } else {
             if (!shift_held) {
                 selection_clear(server);
@@ -569,7 +563,7 @@ void reset_cursor_mode(struct planar_server *server) {
         // If we were moving a window, make sure to focus it
         if (server->grabbed_toplevel) {
             focus_toplevel(server->grabbed_toplevel,
-                server->grabbed_toplevel->xdg_toplevel->base->surface);
+                toplevel_get_surface(server->grabbed_toplevel));
         }
     }
 

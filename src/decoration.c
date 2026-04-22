@@ -75,10 +75,11 @@ void decoration_update_geometry(struct planar_decoration *decoration) {
     if (!decoration || !decoration->toplevel || !decoration->tree) return;
 
     struct planar_toplevel *toplevel = decoration->toplevel;
-    struct wlr_box *geo = &toplevel->xdg_toplevel->base->geometry;
+    struct wlr_box geo;
+    toplevel_get_geometry(toplevel, &geo);
 
-    int width = geo->width;
-    int height = geo->height;
+    int width = geo.width;
+    int height = geo.height;
 
     if (width <= 0 || height <= 0) {
         return;

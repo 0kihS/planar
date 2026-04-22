@@ -111,12 +111,9 @@ void selection_move_by(struct planar_server *server, double delta_x, double delt
         struct planar_toplevel *toplevel = entry->toplevel;
         if (!toplevel) continue;
 
-        toplevel->logical_x += delta_x;
-        toplevel->logical_y += delta_y;
-
-        wlr_scene_node_set_position(&toplevel->container->node,
-            toplevel->logical_x,
-            toplevel->logical_y);
+        move_toplevel(toplevel,
+            toplevel->logical_x + delta_x,
+            toplevel->logical_y + delta_y);
     }
 }
 

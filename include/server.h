@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <wayland-server-core.h>
+#include <wlr/config.h>
 #include <wlr/backend.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
@@ -18,6 +19,9 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#if WLR_HAS_XWAYLAND
+#include <wlr/xwayland.h>
+#endif
 
 
 struct planar_snap_state;
@@ -36,10 +40,16 @@ struct planar_server {
 	struct wlr_backend *backend;
 	struct wlr_renderer *renderer;
 	struct wlr_allocator *allocator;
+	struct wlr_compositor *compositor;
 	struct wlr_scene *scene;
 	struct wlr_scene_output_layout *scene_layout;
 
 	struct wlr_xdg_shell *xdg_shell;
+#if WLR_HAS_XWAYLAND
+	struct wlr_xwayland *xwayland;
+	struct wl_listener new_xwayland_surface;
+	struct wl_listener xwayland_ready;
+#endif
 	struct wlr_layer_shell_v1 *layer_shell;
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_xdg_popup;

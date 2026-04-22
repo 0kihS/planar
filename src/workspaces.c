@@ -65,17 +65,10 @@ void switch_to_workspace(struct planar_server *server, int index) {
 
 void active_toplevel_to_workspace(struct planar_server *server, int index) {
     struct planar_workspace *new_workspace = NULL;
-    struct planar_toplevel *toplevel = NULL;
-    bool found_toplevel = false;
+    struct planar_toplevel *toplevel =
+        find_toplevel_by_surface(server, server->seat->keyboard_state.focused_surface);
 
-    wl_list_for_each_reverse(toplevel, &server->active_workspace->toplevels, link) {
-        if (toplevel->xdg_toplevel->base->surface == server->seat->keyboard_state.focused_surface) {
-            found_toplevel = true;
-            break;
-        }
-    }
-
-    if (!found_toplevel) {
+    if (!toplevel) {
         return;
     }
 
@@ -87,8 +80,7 @@ void active_toplevel_to_workspace(struct planar_server *server, int index) {
         }
     }
 
-    if (toplevel->workspace == new_workspace || !toplevel ||
-        toplevel->xdg_toplevel->base->surface != server->seat->keyboard_state.focused_surface) {
+    if (toplevel->workspace == new_workspace) {
         return;
     }
 
@@ -99,6 +91,7 @@ void active_toplevel_to_workspace(struct planar_server *server, int index) {
         wl_list_insert(&new_workspace->toplevels, &toplevel->link);
         toplevel->workspace = new_workspace;
         wlr_scene_node_reparent(&toplevel->container->node, new_workspace->scene_tree);
+        scale_toplevel(toplevel);
     }
 }
 

@@ -113,7 +113,7 @@ static bool should_skip_toplevel(struct planar_server *server,
     if (other == moving) return true;
 
     // Skip unmapped windows
-    if (!other->xdg_toplevel->base->surface->mapped) return true;
+    if (!toplevel_is_mapped(other)) return true;
 
     // Skip windows in same selection
     if (selection_count(server) > 1 &&
