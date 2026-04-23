@@ -5,6 +5,7 @@
 #include "decoration.h"
 #include "group.h"
 #include "selection.h"
+#include "cursor.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -658,7 +659,7 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
       int size;
       if (sscanf(value, "%d", &size) == 1 && size >= 8 && size <= 128) {
         server->settings.cursor_size = size;
-        return true;
+        return cursor_reload_theme(server);
       }
     } else if (strcmp(setting, "snap_enabled") == 0) {
       if (strcmp(value, "1") == 0 || strcmp(value, "true") == 0) {

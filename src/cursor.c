@@ -11,6 +11,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/edges.h>
+#include <wlr/util/log.h>
 #include <string.h>
 #include <linux/input-event-codes.h>
 
@@ -19,6 +20,14 @@ static void server_cursor_motion_absolute(struct wl_listener *listener, void *da
 static void server_cursor_button(struct wl_listener *listener, void *data);
 static void server_cursor_axis(struct wl_listener *listener, void *data);
 static void server_cursor_frame(struct wl_listener *listener, void *data);
+
+static void remove_cursor_listener(struct wl_listener *listener) {
+    if (listener->link.prev != NULL) {
+        wl_list_remove(&listener->link);
+        listener->link.prev = NULL;
+        listener->link.next = NULL;
+    }
+}
 
 static const char *cursor_name_for_edges(uint32_t edges) {
     switch (edges) {
@@ -81,6 +90,54 @@ static struct planar_toplevel *desktop_toplevel_at(
 
 	*surface = scene_surface->surface;
 	return find_toplevel_by_surface(server, scene_surface->surface);
+}
+
+static bool drag_modifier_held(struct planar_server *server) {
+    struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+    return keyboard && (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_ALT);
+}
+
+void cursor_load_output_theme(struct planar_server *server, struct wlr_output *output) {
+    if (!server->cursor_mgr || !output) {
+        return;
+    }
+
+    if (!wlr_xcursor_manager_load(server->cursor_mgr, output->scale)) {
+        wlr_log(WLR_ERROR, "Failed to load xcursor theme for output scale %.2f", output->scale);
+    }
+}
+
+bool cursor_reload_theme(struct planar_server *server) {
+    struct wlr_xcursor_manager *old_mgr = server->cursor_mgr;
+    struct wlr_xcursor_manager *new_mgr =
+        wlr_xcursor_manager_create(NULL, server->settings.cursor_size);
+    if (!new_mgr) {
+        return false;
+    }
+
+    server->cursor_mgr = new_mgr;
+
+    struct planar_output *output;
+    wl_list_for_each(output, &server->outputs, link) {
+        cursor_load_output_theme(server, output->wlr_output);
+    }
+
+    if (server->cursor) {
+        const char *cursor_name = "default";
+        if (server->cursor_mode == PLANAR_CURSOR_RESIZE) {
+            const char *resize_name = cursor_name_for_edges(server->resize_edges);
+            if (resize_name) {
+                cursor_name = resize_name;
+            }
+        }
+        wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, cursor_name);
+    }
+
+    if (old_mgr) {
+        wlr_xcursor_manager_destroy(old_mgr);
+    }
+
+    return true;
 }
 
 static void update_pointer_focus(struct planar_server *server,
@@ -151,8 +208,6 @@ void cursor_init(struct planar_server *server) {
     server->cursor = wlr_cursor_create();
     wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
 
-    server->cursor_mgr = wlr_xcursor_manager_create(NULL, 24);
-
     server->cursor_mode = PLANAR_CURSOR_PASSTHROUGH;
 
     // Set up listeners
@@ -170,11 +225,27 @@ void cursor_init(struct planar_server *server) {
 
     server->cursor_frame.notify = server_cursor_frame;
     wl_signal_add(&server->cursor->events.frame, &server->cursor_frame);
+
+    if (!cursor_reload_theme(server)) {
+        wlr_log(WLR_ERROR, "Failed to initialize xcursor manager");
+    }
 }
 
 void cursor_destroy(struct planar_server *server) {
-    wlr_xcursor_manager_destroy(server->cursor_mgr);
-    wlr_cursor_destroy(server->cursor);
+    remove_cursor_listener(&server->cursor_motion);
+    remove_cursor_listener(&server->cursor_motion_absolute);
+    remove_cursor_listener(&server->cursor_button);
+    remove_cursor_listener(&server->cursor_axis);
+    remove_cursor_listener(&server->cursor_frame);
+
+    if (server->cursor_mgr) {
+        wlr_xcursor_manager_destroy(server->cursor_mgr);
+        server->cursor_mgr = NULL;
+    }
+    if (server->cursor) {
+        wlr_cursor_destroy(server->cursor);
+        server->cursor = NULL;
+    }
 }
 
 void process_cursor_motion(struct planar_server *server, double cx, double cy, uint32_t time) {
@@ -413,12 +484,14 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
         }
     }
 
-    if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-        if (server->cursor_mode == PLANAR_CURSOR_MOVE) {
-            // End snap mode before changing cursor mode
-            snap_end(server);
+    if (event->state == WL_POINTER_BUTTON_STATE_RELEASED &&
+            event->button == BTN_LEFT &&
+            server->cursor_mode == PLANAR_CURSOR_MOVE) {
+        reset_cursor_mode(server);
+        if (drag_modifier_held(server)) {
             server->cursor_mode = PLANAR_CURSOR_DRAG_PENDING;
         }
+        return;
     }
 
     if (event->state == WL_POINTER_BUTTON_STATE_PRESSED &&

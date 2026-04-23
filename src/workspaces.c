@@ -5,6 +5,7 @@
 #include "ipc.h"
 #include "group.h"
 #include "selection.h"
+#include "cursor.h"
 #include <stdio.h>
 
 void set_workspace_offset(struct planar_server *server, int offset_x, int offset_y) {
@@ -52,6 +53,17 @@ void switch_to_workspace(struct planar_server *server, int index) {
     }
 
     wlr_scene_node_set_enabled(&server->active_workspace->scene_tree->node, true);
+
+    if (server->seat) {
+        wlr_seat_keyboard_notify_clear_focus(server->seat);
+        wlr_seat_pointer_clear_focus(server->seat);
+    }
+
+    if (server->seat && server->cursor &&
+            server->cursor_mode == PLANAR_CURSOR_PASSTHROUGH) {
+        process_cursor_motion(server, server->cursor->x, server->cursor->y, 0);
+    }
+
     struct planar_output *output;
 
     wl_list_for_each(output, &server->outputs, link) {

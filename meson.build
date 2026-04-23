@@ -42,6 +42,7 @@ wayland_scanner_bin = wayland_scanner.get_variable(pkgconfig: 'wayland_scanner')
 protocols_server = [
 	wayland_protocols_dir / 'stable/xdg-shell/xdg-shell.xml',
 	'protocols/wlr-layer-shell-unstable-v1.xml',
+	wayland_protocols_dir / 'staging/cursor-shape/cursor-shape-v1.xml',
 ]
 
 protocols_server_src = []

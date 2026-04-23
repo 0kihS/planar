@@ -262,6 +262,19 @@ void server_init(struct planar_server *server) {
         wlr_log(WLR_INFO, "No config file found, using defaults");
     }
 
+    /* Initialize default settings */
+    server->settings.border_width = 4;
+    server->settings.border_color[0] = 0.3f;
+    server->settings.border_color[1] = 0.3f;
+    server->settings.border_color[2] = 0.3f;
+    server->settings.border_color[3] = 1.0f;
+    server->settings.zoom_min = 0.1;
+    server->settings.zoom_max = 5.0;
+    server->settings.zoom_step = 0.1;
+    server->settings.cursor_size = 24;
+    server->settings.snap_enabled = true;
+    server->settings.snap_threshold = 10;
+
     wl_list_init(&server->workspaces);
     wl_list_init(&server->groups);
     wl_list_init(&server->selected_toplevels);
@@ -280,15 +293,6 @@ void server_init(struct planar_server *server) {
     switch_to_workspace(server, 0);
     server->new_xdg_popup.notify = server_new_xdg_popup;
     wl_signal_add(&server->xdg_shell->events.new_popup, &server->new_xdg_popup);
-
-    server->cursor = wlr_cursor_create();
-    assert(server->cursor);
-    wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
-
-    server->cursor_mgr = wlr_xcursor_manager_create(NULL, 24);
-    assert(server->cursor_mgr);
-
-    server->cursor_mode = PLANAR_CURSOR_PASSTHROUGH;
 
     cursor_init(server);
 
@@ -321,19 +325,6 @@ void server_init(struct planar_server *server) {
     }
 
     server->socket = socket;
-
-    /* Initialize default settings */
-    server->settings.border_width = 4;
-    server->settings.border_color[0] = 0.3f;
-    server->settings.border_color[1] = 0.3f;
-    server->settings.border_color[2] = 0.3f;
-    server->settings.border_color[3] = 1.0f;
-    server->settings.zoom_min = 0.1;
-    server->settings.zoom_max = 5.0;
-    server->settings.zoom_step = 0.1;
-    server->settings.cursor_size = 24;
-    server->settings.snap_enabled = true;
-    server->settings.snap_threshold = 10;
 
     /* Initialize snap system */
     snap_init(server);
@@ -430,8 +421,7 @@ void server_finish(struct planar_server *server) {
     }
     seat_finish(server);
     wlr_scene_node_destroy(&server->scene->tree.node);
-    wlr_xcursor_manager_destroy(server->cursor_mgr);
-    wlr_cursor_destroy(server->cursor);
+    cursor_destroy(server);
     wlr_output_layout_destroy(server->output_layout);
     wlr_allocator_destroy(server->allocator);
     wlr_renderer_destroy(server->renderer);

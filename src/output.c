@@ -1,4 +1,5 @@
 #include "output.h"
+#include "cursor.h"
 #include "layers.h"
 #include "toplevel.h"
 
@@ -31,6 +32,7 @@ void output_request_state(struct wl_listener *listener, void *data) {
     struct planar_output *output = wl_container_of(listener, output, request_state);
     const struct wlr_output_event_request_state *event = data;
     wlr_output_commit_state(output->wlr_output, event->state);
+    cursor_load_output_theme(output->server, output->wlr_output);
 }
 
 void output_destroy(struct wl_listener *listener, void *data) {
@@ -105,4 +107,6 @@ void output_create(struct wl_listener *listener, void *data) {
         output->layers[i] = wlr_scene_tree_create(server->layers[i]);
         wlr_scene_node_set_position(&output->layers[i]->node, output_box.x, output_box.y);
     }
+
+    cursor_load_output_theme(server, wlr_output);
 }

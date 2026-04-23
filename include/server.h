@@ -14,6 +14,7 @@
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_cursor_shape_v1.h>
 #include <wlr/types/wlr_pointer.h>
 #include <scenefx/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
@@ -76,6 +77,7 @@ struct planar_server {
 
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *cursor_mgr;
+	struct wlr_cursor_shape_manager_v1 *cursor_shape_mgr;
 	struct wl_listener cursor_motion;
 	struct wl_listener cursor_motion_absolute;
 	struct wl_listener cursor_button;
@@ -94,6 +96,7 @@ struct planar_server {
 	struct wlr_seat *seat;
 	struct wl_listener new_input;
 	struct wl_listener request_cursor;
+	struct wl_listener request_cursor_shape;
 	struct wl_listener request_set_selection;
 	struct wl_list keyboards;
 	enum planar_cursor_mode cursor_mode;
