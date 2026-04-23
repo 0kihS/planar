@@ -97,6 +97,25 @@ static bool drag_modifier_held(struct planar_server *server) {
     return keyboard && (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_ALT);
 }
 
+static struct wlr_scene_tree *active_drag_icon_tree(
+        struct planar_server *server) {
+    if (!server->seat || !server->seat->drag ||
+            !server->seat->drag->icon || !server->seat->drag->icon->data) {
+        return NULL;
+    }
+    return server->seat->drag->icon->data;
+}
+
+static void update_drag_icon_position(struct planar_server *server) {
+    struct wlr_scene_tree *tree = active_drag_icon_tree(server);
+    if (!tree) {
+        return;
+    }
+
+    wlr_scene_node_set_position(&tree->node,
+            (int)server->cursor->x, (int)server->cursor->y);
+}
+
 void cursor_load_output_theme(struct planar_server *server, struct wlr_output *output) {
     if (!server->cursor_mgr || !output) {
         return;
@@ -145,9 +164,15 @@ static void update_pointer_focus(struct planar_server *server,
     double sx, sy;
     struct wlr_seat *seat = server->seat;
     struct wlr_surface *surface = NULL;
+    struct wlr_scene_tree *drag_icon_tree = active_drag_icon_tree(server);
     struct wlr_surface *focused_surface = seat->pointer_state.focused_surface;
     struct wlr_surface *focused_root = focused_surface ?
         wlr_surface_get_root_surface(focused_surface) : NULL;
+
+    if (drag_icon_tree) {
+        wlr_scene_node_set_enabled(&drag_icon_tree->node, false);
+    }
+
     struct planar_layer_surface *layer_surface = layer_surface_at(server,
             cx, cy, &surface, &sx, &sy);
 
@@ -158,7 +183,7 @@ static void update_pointer_focus(struct planar_server *server,
         }
         wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
         wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-        return;
+        goto restore_drag_icon;
     }
 
     int edge_result;
@@ -175,7 +200,7 @@ static void update_pointer_focus(struct planar_server *server,
                 wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, cursor_name);
             }
         }
-        return;
+        goto restore_drag_icon;
     }
 
     struct planar_toplevel *toplevel = desktop_toplevel_at(server,
@@ -187,7 +212,7 @@ static void update_pointer_focus(struct planar_server *server,
         }
         wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
         wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-        return;
+        goto restore_drag_icon;
     }
 
     if (surface) {
@@ -197,11 +222,16 @@ static void update_pointer_focus(struct planar_server *server,
         }
         wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
         wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-        return;
+        goto restore_drag_icon;
     }
 
     wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
     wlr_seat_pointer_clear_focus(seat);
+
+restore_drag_icon:
+    if (drag_icon_tree) {
+        wlr_scene_node_set_enabled(&drag_icon_tree->node, true);
+    }
 }
 
 void cursor_init(struct planar_server *server) {
@@ -257,7 +287,9 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
         process_cursor_resize(server, time);
         return;
     }
+
     update_pointer_focus(server, cx, cy, time);
+    update_drag_icon_position(server);
 }
 
 void process_cursor_move(struct planar_server *server, uint32_t time) {

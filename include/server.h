@@ -98,6 +98,8 @@ struct planar_server {
 	struct wl_listener request_cursor;
 	struct wl_listener request_cursor_shape;
 	struct wl_listener request_set_selection;
+	struct wl_listener request_set_primary_selection;
+	struct wl_listener request_start_drag;
 	struct wl_list keyboards;
 	enum planar_cursor_mode cursor_mode;
 	struct planar_toplevel *grabbed_toplevel;

@@ -18,8 +18,11 @@
 #include <unistd.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_data_control_v1.h>
+#include <wlr/types/wlr_ext_data_control_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_primary_selection_v1.h>
 #include <scenefx/types/wlr_scene.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_subcompositor.h>
@@ -206,6 +209,9 @@ void server_init(struct planar_server *server) {
     server->compositor = wlr_compositor_create(server->wl_display, 5, server->renderer);
     wlr_subcompositor_create(server->wl_display);
     wlr_data_device_manager_create(server->wl_display);
+    wlr_primary_selection_v1_device_manager_create(server->wl_display);
+    wlr_data_control_manager_v1_create(server->wl_display);
+    wlr_ext_data_control_manager_v1_create(server->wl_display, 1);
     wlr_screencopy_manager_v1_create(server->wl_display);
 
     wl_list_init(&server->outputs);
