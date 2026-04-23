@@ -7,6 +7,7 @@ struct planar_output {
     struct wl_list link;
     struct planar_server *server;
     struct wlr_output *wlr_output;
+    struct wlr_scene_tree *layers[4];
     struct wl_listener frame;
     struct wl_listener request_state;
     struct wl_listener destroy;

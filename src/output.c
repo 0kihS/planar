@@ -42,10 +42,19 @@ void output_destroy(struct wl_listener *listener, void *data) {
     wl_list_remove(&output->destroy.link);
     wl_list_remove(&output->link);
 
-    struct planar_layer_surface *layer_view;
-    wl_list_for_each(layer_view, &output->layer_views, output_link){
+    struct planar_layer_surface *layer_view, *tmp;
+    wl_list_for_each_safe(layer_view, tmp, &output->layer_views, output_link) {
+        wl_list_remove(&layer_view->output_link);
+        wl_list_init(&layer_view->output_link);
         layer_view->output = NULL;
         wlr_layer_surface_v1_destroy(layer_view->layer_surface);
+    }
+
+    for (int i = 0; i < 4; i++) {
+        if (output->layers[i]) {
+            wlr_scene_node_destroy(&output->layers[i]->node);
+            output->layers[i] = NULL;
+        }
     }
     free(output);
 }
@@ -89,4 +98,11 @@ void output_create(struct wl_listener *listener, void *data) {
         wlr_output);
     struct wlr_scene_output *scene_output = wlr_scene_output_create(server->scene, wlr_output);
     wlr_scene_output_layout_add_output(server->scene_layout, l_output, scene_output);
+
+    struct wlr_box output_box;
+    wlr_output_layout_get_box(server->output_layout, wlr_output, &output_box);
+    for (int i = 0; i < 4; i++) {
+        output->layers[i] = wlr_scene_tree_create(server->layers[i]);
+        wlr_scene_node_set_position(&output->layers[i]->node, output_box.x, output_box.y);
+    }
 }

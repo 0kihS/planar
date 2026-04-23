@@ -13,6 +13,10 @@
 static struct wlr_scene_tree *planar_layer_get_scene(struct planar_output *output, enum zwlr_layer_shell_v1_layer type);
 
 void arrange_layers(struct planar_output *output) {
+    if (!output) {
+        return;
+    }
+
     struct wlr_box usable_area;
     wlr_output_effective_resolution(output->wlr_output, &usable_area.width, &usable_area.height);
     usable_area.x = usable_area.y = 0;
@@ -20,21 +24,18 @@ void arrange_layers(struct planar_output *output) {
 
     // Arrange each layer
     for (int i = 0; i < 4; i++) {
-        struct wlr_scene_tree *layer_tree = output->server->layers[i];
-        struct wlr_scene_node *node;
-        wl_list_for_each(node, &layer_tree->children, link) {
-            // **Retrieve planar_layer_surface from node->data**
-            struct planar_layer_surface *planar_layer_surface = (struct planar_layer_surface *)node->data;
-            if (!planar_layer_surface) {
+        struct planar_layer_surface *planar_layer_surface;
+        wl_list_for_each(planar_layer_surface, &output->layer_views, output_link) {
+            struct wlr_layer_surface_v1 *layer_surface = planar_layer_surface->layer_surface;
+            if (!layer_surface || !layer_surface->initialized ||
+                layer_surface->current.layer != (uint32_t)i) {
                 continue;  // Skip if data is NULL
             }
 
-            struct wlr_layer_surface_v1 *layer_surface = planar_layer_surface->layer_surface;
-            if (!layer_surface || !layer_surface->initialized) {
+            struct wlr_scene_layer_surface_v1 *scene_layer_surface = planar_layer_surface->scene_layer_surface;
+            if (!scene_layer_surface) {
                 continue;
             }
-
-            struct wlr_scene_layer_surface_v1 *scene_layer_surface = planar_layer_surface->scene_layer_surface;
 
             // Configure the surface based on the available areas
             wlr_scene_layer_surface_v1_configure(scene_layer_surface, &full_area, &usable_area);
@@ -80,7 +81,7 @@ void server_layer_shell_surface(struct wl_listener *listener, void *data) {
     }
 
     // Get the appropriate scene tree for this layer
-    struct wlr_scene_tree *layer_tree = server->layers[layer_surface->pending.layer];
+    struct wlr_scene_tree *layer_tree = planar_layer_get_scene(output, layer_surface->pending.layer);
 
     // Create the scene layer surface
     struct wlr_scene_layer_surface_v1 *scene_layer_surface =
@@ -103,6 +104,7 @@ void server_layer_shell_surface(struct wl_listener *listener, void *data) {
     planar_layer_surface->scene_layer_surface = scene_layer_surface;
     planar_layer_surface->layer_surface = layer_surface;
     planar_layer_surface->output = output;
+    wl_list_insert(&output->layer_views, &planar_layer_surface->output_link);
 
     scene_layer_surface->tree->node.data = planar_layer_surface;
 
@@ -150,6 +152,9 @@ void server_layer_shell_surface_destroy(struct wl_listener *listener, void *data
     wl_list_remove(&layer_surface->surface_unmap.link);
     wl_list_remove(&layer_surface->surface_destroy.link);
     wl_list_remove(&layer_surface->surface_commit.link);
+    if (layer_surface->output_link.prev) {
+        wl_list_remove(&layer_surface->output_link);
+    }
 
     free(layer_surface);
 }
@@ -173,17 +178,29 @@ void server_layer_shell_surface_commit(struct wl_listener *listener, void *data)
         output = wl_container_of(server->outputs.next, output, link);
     }
 
+    struct planar_output *old_output = planar_layer_surface->output;
+    if (output != old_output && output != NULL) {
+        if (planar_layer_surface->output_link.prev) {
+            wl_list_remove(&planar_layer_surface->output_link);
+        }
+        wl_list_insert(&output->layer_views, &planar_layer_surface->output_link);
+        planar_layer_surface->output = output;
+    }
+
     uint32_t committed = layer_surface->current.committed;
-	if (committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) {
+	if ((committed & WLR_LAYER_SURFACE_V1_STATE_LAYER) || output != old_output) {
 		enum zwlr_layer_shell_v1_layer layer_type = layer_surface->current.layer;
 		struct wlr_scene_tree *output_layer = planar_layer_get_scene(
-			planar_layer_surface->output, layer_type);
+			output, layer_type);
 		wlr_scene_node_reparent(&planar_layer_surface->scene_layer_surface->tree->node, output_layer);
 	}
 
 	if (layer_surface->initial_commit || committed || layer_surface->surface->mapped != planar_layer_surface->mapped) {
 		planar_layer_surface->mapped = layer_surface->surface->mapped;
-		arrange_layers(planar_layer_surface->output);
+		if (old_output && old_output != output) {
+            arrange_layers(old_output);
+        }
+		arrange_layers(output);
 	}
 }
 
@@ -229,16 +246,18 @@ void focus_layer_surface(struct planar_layer_surface *layer_surface, struct wlr_
 
 static struct wlr_scene_tree *planar_layer_get_scene(struct planar_output *output,
 		enum zwlr_layer_shell_v1_layer type) {
-        struct planar_server *server = output->server;
+    if (!output) {
+        return NULL;
+    }
 	switch (type) {
 	case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
-		return server->layers[0];
+		return output->layers[0];
 	case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
-		return server->layers[1];
+		return output->layers[1];
 	case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
-		return server->layers[2];
+		return output->layers[2];
 	case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
-		return server->layers[3];
+		return output->layers[3];
 	}
 
 	return NULL;

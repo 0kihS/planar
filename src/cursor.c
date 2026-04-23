@@ -83,6 +83,70 @@ static struct planar_toplevel *desktop_toplevel_at(
 	return find_toplevel_by_surface(server, scene_surface->surface);
 }
 
+static void update_pointer_focus(struct planar_server *server,
+        double cx, double cy, uint32_t time) {
+    double sx, sy;
+    struct wlr_seat *seat = server->seat;
+    struct wlr_surface *surface = NULL;
+    struct wlr_surface *focused_surface = seat->pointer_state.focused_surface;
+    struct wlr_surface *focused_root = focused_surface ?
+        wlr_surface_get_root_surface(focused_surface) : NULL;
+    struct planar_layer_surface *layer_surface = layer_surface_at(server,
+            cx, cy, &surface, &sx, &sy);
+
+    if (layer_surface && surface) {
+        struct wlr_surface *root_surface = wlr_surface_get_root_surface(surface);
+        if (root_surface != focused_root) {
+            wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
+        }
+        wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+        wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+        return;
+    }
+
+    int edge_result;
+    uint32_t edges;
+    struct planar_toplevel *dec_toplevel = toplevel_decoration_at(server,
+            cx, cy, &edge_result, &edges);
+    if (dec_toplevel) {
+        wlr_seat_pointer_clear_focus(seat);
+        if (edge_result == 0) {
+            wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
+        } else {
+            const char *cursor_name = cursor_name_for_edges(edges);
+            if (cursor_name) {
+                wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, cursor_name);
+            }
+        }
+        return;
+    }
+
+    struct planar_toplevel *toplevel = desktop_toplevel_at(server,
+            cx, cy, &surface, &sx, &sy);
+    if (toplevel && surface) {
+        struct wlr_surface *root_surface = wlr_surface_get_root_surface(surface);
+        if (root_surface != focused_root) {
+            wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
+        }
+        wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+        wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+        return;
+    }
+
+    if (surface) {
+        struct wlr_surface *root_surface = wlr_surface_get_root_surface(surface);
+        if (root_surface != focused_root) {
+            wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
+        }
+        wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
+        wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+        return;
+    }
+
+    wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
+    wlr_seat_pointer_clear_focus(seat);
+}
+
 void cursor_init(struct planar_server *server) {
     server->cursor = wlr_cursor_create();
     wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
@@ -122,60 +186,7 @@ void process_cursor_motion(struct planar_server *server, double cx, double cy, u
         process_cursor_resize(server, time);
         return;
     }
-
-    /* First, check for layer surfaces using global coordinates */
-    double sx, sy;
-    struct wlr_seat *seat = server->seat;
-    struct wlr_surface *surface = NULL;
-    struct planar_layer_surface *layer_surface = layer_surface_at(server,
-            cx, cy, &surface, &sx, &sy);
-
-    if (layer_surface && strcmp(surface->role->name, "zwlr_layer_surface_v1") == 0) {
-        if (surface) {
-            wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
-            wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-        }
-        return;
-    }
-
-    // Check decorations first
-    int edge_result;
-    uint32_t edges;
-    struct planar_toplevel *dec_toplevel = toplevel_decoration_at(server, cx, cy, &edge_result, &edges);
-    if (dec_toplevel) {
-        wlr_seat_pointer_clear_focus(seat);
-        if (edge_result == 0) {
-            // On titlebar
-            wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
-        } else {
-            // On border - show resize cursor
-            const char *cursor_name = cursor_name_for_edges(edges);
-            if (cursor_name) {
-                wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, cursor_name);
-            }
-        }
-        return;
-    }
-
-    struct planar_toplevel *toplevel = desktop_toplevel_at(server,
-            cx, cy, &surface, &sx, &sy);
-
-    if (toplevel && toplevel->server) {
-        // Reset cursor to default when entering a surface from decoration
-        wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
-        wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
-        wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-    } else if (surface) {
-        wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
-        wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
-        wlr_seat_pointer_notify_motion(seat, time, sx, sy);
-    } else {
-        /* If there's no toplevel under the cursor, set the cursor image to a
-         * default. This is what makes the cursor image appear when you move it
-         * around the screen, not over any toplevels. */
-        wlr_cursor_set_xcursor(server->cursor, server->cursor_mgr, "default");
-        wlr_seat_pointer_clear_focus(seat);
-    }
+    update_pointer_focus(server, cx, cy, time);
 }
 
 void process_cursor_move(struct planar_server *server, uint32_t time) {
@@ -408,6 +419,11 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
             snap_end(server);
             server->cursor_mode = PLANAR_CURSOR_DRAG_PENDING;
         }
+    }
+
+    if (event->state == WL_POINTER_BUTTON_STATE_PRESSED &&
+            server->cursor_mode == PLANAR_CURSOR_PASSTHROUGH) {
+        update_pointer_focus(server, cx, cy, event->time_msec);
     }
 
     wlr_seat_pointer_notify_button(server->seat,
