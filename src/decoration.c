@@ -56,6 +56,11 @@ struct planar_decoration *decoration_create(struct planar_toplevel *toplevel) {
     decoration->border_right = wlr_scene_rect_create(decoration->tree,
         border, 0, color);
 
+    decoration->border_top->node.data = decoration;
+    decoration->border_bottom->node.data = decoration;
+    decoration->border_left->node.data = decoration;
+    decoration->border_right->node.data = decoration;
+
     wlr_scene_node_place_below(&decoration->tree->node, &toplevel->scene_tree->node);
 
     return decoration;

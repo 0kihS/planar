@@ -55,16 +55,19 @@ static const char *cursor_name_for_edges(uint32_t edges) {
 static struct planar_toplevel *toplevel_decoration_at(
         struct planar_server *server, double lx, double ly,
         int *edge_result, uint32_t *edges) {
-    struct planar_toplevel *toplevel;
-    wl_list_for_each(toplevel, &server->active_workspace->toplevels, link) {
-        if (!toplevel->decoration) continue;
-
-        int result = decoration_get_edge_at(toplevel->decoration, lx, ly, edges);
-        if (result >= 0) {
+    double sx, sy;
+    struct wlr_scene_node *node = wlr_scene_node_at(
+        &server->scene->tree.node, lx, ly, &sx, &sy);
+    if (node && node->type == WLR_SCENE_NODE_RECT && node->data) {
+        struct planar_decoration *decoration = node->data;
+        struct planar_toplevel *toplevel = decoration->toplevel;
+        int result = decoration_get_edge_at(decoration, lx, ly, edges);
+        if (toplevel && result >= 0) {
             *edge_result = result;
             return toplevel;
         }
     }
+
     *edge_result = -1;
     *edges = 0;
     return NULL;
