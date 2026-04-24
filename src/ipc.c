@@ -565,8 +565,7 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
   if (strncmp(cmd, "workspace ", 10) == 0) {
     int ws;
     if (sscanf(cmd + 10, "%d", &ws) == 1) {
-      switch_to_workspace(server, ws - 1);
-      return true;
+      return switch_to_workspace(server, ws - 1);
     }
     return false;
   }
@@ -579,8 +578,7 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
   if (strncmp(cmd, "move_to_workspace ", 18) == 0) {
     int ws;
     if (sscanf(cmd + 18, "%d", &ws) == 1) {
-      active_toplevel_to_workspace(server, ws - 1);
-      return true;
+      return active_toplevel_to_workspace(server, ws - 1);
     }
     return false;
   }

@@ -19,8 +19,8 @@ struct planar_workspace {
     double scale;
 };
 
-void switch_to_workspace(struct planar_server *server, int index);
-void active_toplevel_to_workspace(struct planar_server *server, int index);
+bool switch_to_workspace(struct planar_server *server, int index);
+bool active_toplevel_to_workspace(struct planar_server *server, int index);
 void update_workspace_offset(struct planar_server *server, int offset_x, int offset_y);
 void set_workspace_offset(struct planar_server *server, int offset_x, int offset_y);
 void update_workspace_scale(struct planar_server *server, double scale, double pivot_x, double pivot_y);

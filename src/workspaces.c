@@ -8,6 +8,21 @@
 #include "cursor.h"
 #include <stdio.h>
 
+static struct planar_workspace *workspace_by_index(struct planar_server *server, int index) {
+    if (index < 0 || index >= WORKSPACE_COUNT) {
+        return NULL;
+    }
+
+    struct planar_workspace *workspace;
+    wl_list_for_each(workspace, &server->workspaces, link) {
+        if (workspace->index == index) {
+            return workspace;
+        }
+    }
+
+    return NULL;
+}
+
 void set_workspace_offset(struct planar_server *server, int offset_x, int offset_y) {
     struct planar_workspace *active_workspace = server->active_workspace;
 
@@ -37,21 +52,18 @@ void update_workspace_offset(struct planar_server *server, int offset_x, int off
     }
 }
 
-void switch_to_workspace(struct planar_server *server, int index) {
-    struct planar_workspace *new_workspace;
+bool switch_to_workspace(struct planar_server *server, int index) {
+    struct planar_workspace *new_workspace = workspace_by_index(server, index);
+    if (!new_workspace) {
+        return false;
+    }
 
     // Clear selection when switching workspaces
     selection_clear(server);
 
     wlr_scene_node_set_enabled(&server->active_workspace->scene_tree->node, false);
 
-    wl_list_for_each(new_workspace, &server->workspaces, link) {
-        if (new_workspace->index == index) {
-            server->active_workspace = new_workspace;
-            break;
-        }
-    }
-
+    server->active_workspace = new_workspace;
     wlr_scene_node_set_enabled(&server->active_workspace->scene_tree->node, true);
 
     if (server->seat) {
@@ -73,27 +85,24 @@ void switch_to_workspace(struct planar_server *server, int index) {
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", index + 1);
     ipc_broadcast_event(server, "workspace", buf);
+    return true;
 }
 
-void active_toplevel_to_workspace(struct planar_server *server, int index) {
-    struct planar_workspace *new_workspace = NULL;
+bool active_toplevel_to_workspace(struct planar_server *server, int index) {
+    struct planar_workspace *new_workspace = workspace_by_index(server, index);
+    if (!new_workspace) {
+        return false;
+    }
+
     struct planar_toplevel *toplevel =
         find_toplevel_by_surface(server, server->seat->keyboard_state.focused_surface);
 
     if (!toplevel) {
-        return;
-    }
-
-    struct planar_workspace *ws;
-    wl_list_for_each(ws, &server->workspaces, link) {
-        if (ws->index == index) {
-            new_workspace = ws;
-            break;
-        }
+        return false;
     }
 
     if (toplevel->workspace == new_workspace) {
-        return;
+        return true;
     }
 
     if (toplevel->group) {
@@ -105,6 +114,7 @@ void active_toplevel_to_workspace(struct planar_server *server, int index) {
         wlr_scene_node_reparent(&toplevel->container->node, new_workspace->scene_tree);
         scale_toplevel(toplevel);
     }
+    return true;
 }
 
 void update_workspace_scale(struct planar_server *server, double scale, double pivot_x, double pivot_y) {
