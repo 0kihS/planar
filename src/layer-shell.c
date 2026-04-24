@@ -12,6 +12,15 @@
 
 static struct wlr_scene_tree *planar_layer_get_scene(struct planar_output *output, enum zwlr_layer_shell_v1_layer type);
 
+static struct planar_output *first_output(struct planar_server *server) {
+    if (wl_list_empty(&server->outputs)) {
+        return NULL;
+    }
+
+    struct planar_output *output;
+    return wl_container_of(server->outputs.next, output, link);
+}
+
 void arrange_layers(struct planar_output *output) {
     if (!output) {
         return;
@@ -77,11 +86,21 @@ void server_layer_shell_surface(struct wl_listener *listener, void *data) {
     }
     if (!output) {
         // Use the first output if the client didn't specify one
-        output = wl_container_of(server->outputs.next, output, link);
+        output = first_output(server);
+        if (!output) {
+            wlr_log(WLR_ERROR, "No output available for layer surface");
+            wlr_layer_surface_v1_destroy(layer_surface);
+            return;
+        }
+        layer_surface->output = output->wlr_output;
     }
 
     // Get the appropriate scene tree for this layer
     struct wlr_scene_tree *layer_tree = planar_layer_get_scene(output, layer_surface->pending.layer);
+    if (!layer_tree) {
+        wlr_layer_surface_v1_destroy(layer_surface);
+        return;
+    }
 
     // Create the scene layer surface
     struct wlr_scene_layer_surface_v1 *scene_layer_surface =
@@ -96,7 +115,7 @@ void server_layer_shell_surface(struct wl_listener *listener, void *data) {
     // Create and initialize your planar_layer_surface
     struct planar_layer_surface *planar_layer_surface = calloc(1, sizeof(struct planar_layer_surface));
     if (!planar_layer_surface) {
-        free(layer_surface);
+        wlr_layer_surface_v1_destroy(layer_surface);
         return;
     }
 
@@ -175,7 +194,13 @@ void server_layer_shell_surface_commit(struct wl_listener *listener, void *data)
     }
     if (!output) {
         // Use the first output if the client didn't specify one
-        output = wl_container_of(server->outputs.next, output, link);
+        output = first_output(server);
+        if (!output) {
+            wlr_log(WLR_ERROR, "No output available for layer surface commit");
+            wlr_layer_surface_v1_destroy(layer_surface);
+            return;
+        }
+        layer_surface->output = output->wlr_output;
     }
 
     struct planar_output *old_output = planar_layer_surface->output;
@@ -192,6 +217,10 @@ void server_layer_shell_surface_commit(struct wl_listener *listener, void *data)
 		enum zwlr_layer_shell_v1_layer layer_type = layer_surface->current.layer;
 		struct wlr_scene_tree *output_layer = planar_layer_get_scene(
 			output, layer_type);
+        if (!output_layer) {
+            wlr_layer_surface_v1_destroy(layer_surface);
+            return;
+        }
 		wlr_scene_node_reparent(&planar_layer_surface->scene_layer_surface->tree->node, output_layer);
 	}
 
