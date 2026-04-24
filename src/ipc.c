@@ -1299,19 +1299,18 @@ void ipc_finish(struct planar_server *server) {
 
 void ipc_broadcast_event(struct planar_server *server, const char *event_type,
                          const char *data) {
-  char buf[IPC_BUFFER_SIZE];
-  int len;
-  if (data) {
-    len = snprintf(buf, sizeof(buf), "%s %s\n", event_type, data);
-  } else {
-    len = snprintf(buf, sizeof(buf), "%s\n", event_type);
-  }
-  if (len < 0) {
+  size_t event_type_len = strlen(event_type);
+  size_t data_len = data ? strlen(data) : 0;
+  size_t len = event_type_len + (data ? 1 + data_len : 0) + 1;
+  char *buf = malloc(len + 1);
+  if (!buf) {
     return;
   }
-  if ((size_t)len >= sizeof(buf)) {
-    len = sizeof(buf) - 1;
-    buf[len] = '\0';
+
+  if (data) {
+    snprintf(buf, len + 1, "%s %s\n", event_type, data);
+  } else {
+    snprintf(buf, len + 1, "%s\n", event_type);
   }
 
   struct ipc_client *client, *tmp;
@@ -1320,6 +1319,8 @@ void ipc_broadcast_event(struct planar_server *server, const char *event_type,
       wlr_log(WLR_DEBUG, "Event client disconnected");
     }
   }
+
+  free(buf);
 }
 
 void ipc_broadcast_json_event(struct planar_server *server, const char *event_type,
