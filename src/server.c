@@ -161,24 +161,7 @@ static void server_new_toplevel_decoration(struct wl_listener *listener, void *d
 }
 
 static void server_new_output(struct wl_listener *listener, void *data) {
-    struct planar_server *server = wl_container_of(listener, server, new_output);
-    struct wlr_output *wlr_output = data;
-
-    wlr_output_init_render(wlr_output, server->allocator, server->renderer);
-
-    struct wlr_output_state state;
-    wlr_output_state_init(&state);
-    wlr_output_state_set_enabled(&state, true);
-
-    struct wlr_output_mode *mode = wlr_output_preferred_mode(wlr_output);
-    if (mode != NULL) {
-        wlr_output_state_set_mode(&state, mode);
-    }
-
-    wlr_output_commit_state(wlr_output, &state);
-    wlr_output_state_finish(&state);
-
-    output_create(listener, wlr_output);
+    output_create(listener, data);
 }
 
 #if WLR_HAS_XWAYLAND
