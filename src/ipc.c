@@ -7,6 +7,9 @@
 #include "selection.h"
 #include "cursor.h"
 
+#include <errno.h>
+#include <json-c/json.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +23,24 @@
 
 #define IPC_BUFFER_SIZE 4096
 
+static bool write_all(int fd, const char *buf, size_t len) {
+  while (len > 0) {
+    ssize_t written = write(fd, buf, len);
+    if (written < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return false;
+    }
+    if (written == 0) {
+      return false;
+    }
+    buf += written;
+    len -= written;
+  }
+  return true;
+}
+
 static void ipc_client_destroy(struct ipc_client *client) {
   wl_list_remove(&client->link);
   wl_event_source_remove(client->event_source);
@@ -27,322 +48,313 @@ static void ipc_client_destroy(struct ipc_client *client) {
   free(client);
 }
 
-static void send_response(int fd, bool ok, const char *data) {
-  int data_len = data ? (int)strlen(data) : 0;
-  /* JSON wrapping adds ~40 bytes overhead */
-  int buf_size = data_len + 64;
-  char *buf = malloc(buf_size);
-  if (!buf) return;
+static void send_json_response(int fd, bool ok, json_object *data,
+                               const char *error) {
+  json_object *response = json_object_new_object();
+  if (!response) {
+    return;
+  }
 
-  int len;
+  json_object_object_add(response, "ok", json_object_new_boolean(ok));
   if (ok) {
     if (data) {
-      len = snprintf(buf, buf_size, "{\"ok\":true,\"data\":%s}\n", data);
-    } else {
-      len = snprintf(buf, buf_size, "{\"ok\":true}\n");
+      json_object_object_add(response, "data", data);
     }
   } else {
-    len = snprintf(buf, buf_size, "{\"ok\":false,\"error\":\"%s\"}\n",
-                   data ? data : "unknown error");
+    json_object_object_add(response, "error",
+        json_object_new_string(error ? error : "unknown error"));
   }
-  if (len > 0) {
-    write(fd, buf, len);
+
+  const char *json = json_object_to_json_string_ext(response,
+      JSON_C_TO_STRING_PLAIN);
+  write_all(fd, json, strlen(json));
+  write_all(fd, "\n", 1);
+
+  json_object_put(response);
+}
+
+static void send_ok(int fd) {
+  send_json_response(fd, true, NULL, NULL);
+}
+
+static void send_error(int fd, const char *error) {
+  send_json_response(fd, false, NULL, error);
+}
+
+static void send_json_data(int fd, json_object *data) {
+  if (!data) {
+    send_error(fd, "out of memory");
+    return;
   }
-  free(buf);
+  send_json_response(fd, true, data, NULL);
+}
+
+static json_object *json_string_or_empty(const char *value) {
+  return json_object_new_string(value ? value : "");
+}
+
+static json_object *json_geometry(double x, double y, int width, int height) {
+  json_object *geometry = json_object_new_object();
+  if (!geometry) {
+    return NULL;
+  }
+
+  json_object_object_add(geometry, "x", json_object_new_int((int)lround(x)));
+  json_object_object_add(geometry, "y", json_object_new_int((int)lround(y)));
+  json_object_object_add(geometry, "width", json_object_new_int(width));
+  json_object_object_add(geometry, "height", json_object_new_int(height));
+  return geometry;
+}
+
+static json_object *json_toplevel(struct planar_server *server,
+                                  struct planar_toplevel *toplevel,
+                                  bool include_focused,
+                                  bool include_group) {
+  json_object *window = json_object_new_object();
+  if (!window) {
+    return NULL;
+  }
+
+  struct wlr_box geo;
+  toplevel_get_geometry(toplevel, &geo);
+  int width = toplevel->decoration ? toplevel->decoration->width : geo.width;
+  int height = toplevel->decoration ? toplevel->decoration->height : geo.height;
+
+  json_object_object_add(window, "id",
+      json_string_or_empty(toplevel->window_id));
+  json_object_object_add(window, "app_id",
+      json_string_or_empty(toplevel_get_app_id(toplevel)));
+  json_object_object_add(window, "title",
+      json_string_or_empty(toplevel_get_title(toplevel)));
+  json_object_object_add(window, "workspace",
+      json_object_new_int(toplevel->workspace ? toplevel->workspace->index + 1 : 0));
+  json_object_object_add(window, "geometry",
+      json_geometry(toplevel->logical_x, toplevel->logical_y, width, height));
+
+  if (include_focused) {
+    struct wlr_surface *focused_surface =
+        server->seat->keyboard_state.focused_surface;
+    json_object_object_add(window, "focused",
+        json_object_new_boolean(toplevel_get_surface(toplevel) == focused_surface));
+  }
+
+  if (include_group) {
+    if (toplevel->group) {
+      json_object_object_add(window, "group",
+          json_string_or_empty(toplevel->group->group_id));
+    } else {
+      json_object_object_add(window, "group", json_object_new_null());
+    }
+  }
+
+  return window;
+}
+
+static json_object *json_group(struct planar_group *group) {
+  json_object *group_json = json_object_new_object();
+  json_object *color = json_object_new_array();
+  json_object *members = json_object_new_array();
+  if (!group_json || !color || !members) {
+    json_object_put(group_json);
+    json_object_put(color);
+    json_object_put(members);
+    return NULL;
+  }
+
+  json_object_object_add(group_json, "id", json_string_or_empty(group->group_id));
+  json_object_object_add(group_json, "member_count",
+      json_object_new_int(group_member_count(group)));
+
+  for (size_t i = 0; i < 4; i++) {
+    json_object_array_add(color, json_object_new_double(group->border_color[i]));
+  }
+  json_object_object_add(group_json, "color", color);
+
+  struct planar_group_member *member;
+  wl_list_for_each(member, &group->members, link) {
+    if (member->toplevel && member->toplevel->window_id) {
+      json_object_array_add(members,
+          json_string_or_empty(member->toplevel->window_id));
+    }
+  }
+  json_object_object_add(group_json, "members", members);
+
+  return group_json;
+}
+
+static json_object *json_string_array(char **values, size_t count) {
+  json_object *array = json_object_new_array();
+  if (!array) {
+    return NULL;
+  }
+
+  for (size_t i = 0; i < count; i++) {
+    json_object_array_add(array, json_string_or_empty(values[i]));
+  }
+  return array;
 }
 
 static void handle_get_workspaces(struct planar_server *server, int client_fd) {
-  char buf[IPC_BUFFER_SIZE];
-  char *ptr = buf;
-  int remaining = sizeof(buf);
-  int written;
-
-  written = snprintf(ptr, remaining, "[");
-  ptr += written;
-  remaining -= written;
-
-  bool first = true;
-  struct planar_workspace *ws;
-  wl_list_for_each(ws, &server->workspaces, link) {
-    written = snprintf(ptr, remaining,
-                       "%s{\"index\":%d,\"active\":%s,\"scale\":%.2f,"
-                       "\"offset\":{\"x\":%d,\"y\":%d}}",
-                       first ? "" : ",", ws->index + 1,
-                       ws == server->active_workspace ? "true" : "false",
-                       ws->scale, ws->global_offset.x, ws->global_offset.y);
-    ptr += written;
-    remaining -= written;
-    first = false;
+  json_object *workspaces = json_object_new_array();
+  if (!workspaces) {
+    send_error(client_fd, "out of memory");
+    return;
   }
 
-  snprintf(ptr, remaining, "]");
-  send_response(client_fd, true, buf);
+  struct planar_workspace *ws;
+  wl_list_for_each(ws, &server->workspaces, link) {
+    json_object *workspace = json_object_new_object();
+    json_object *offset = json_object_new_object();
+    if (!workspace || !offset) {
+      json_object_put(workspace);
+      json_object_put(offset);
+      json_object_put(workspaces);
+      send_error(client_fd, "out of memory");
+      return;
+    }
+
+    json_object_object_add(workspace, "index", json_object_new_int(ws->index + 1));
+    json_object_object_add(workspace, "active",
+        json_object_new_boolean(ws == server->active_workspace));
+    json_object_object_add(workspace, "scale", json_object_new_double(ws->scale));
+    json_object_object_add(offset, "x", json_object_new_int(ws->global_offset.x));
+    json_object_object_add(offset, "y", json_object_new_int(ws->global_offset.y));
+    json_object_object_add(workspace, "offset", offset);
+    json_object_array_add(workspaces, workspace);
+  }
+
+  send_json_data(client_fd, workspaces);
 }
 
 static void handle_get_windows(struct planar_server *server, int client_fd) {
-  char buf[IPC_BUFFER_SIZE * 4];
-  char *ptr = buf;
-  int remaining = sizeof(buf);
-  int written;
+  json_object *windows = json_object_new_array();
+  if (!windows) {
+    send_error(client_fd, "out of memory");
+    return;
+  }
 
-  struct wlr_surface *focused_surface = server->seat->keyboard_state.focused_surface;
-
-  written = snprintf(ptr, remaining, "[");
-  ptr += written;
-  remaining -= written;
-
-  bool first = true;
   struct planar_workspace *ws;
   wl_list_for_each(ws, &server->workspaces, link) {
     struct planar_toplevel *toplevel;
     wl_list_for_each(toplevel, &ws->toplevels, link) {
       if (!toplevel_is_mapped(toplevel)) continue;
 
-      const char *app_id = toplevel_get_app_id(toplevel) ? toplevel_get_app_id(toplevel) : "";
-      const char *title = toplevel_get_title(toplevel) ? toplevel_get_title(toplevel) : "";
-      struct wlr_box geo;
-      toplevel_get_geometry(toplevel, &geo);
-      int width = toplevel->decoration ? toplevel->decoration->width : geo.width;
-      int height = toplevel->decoration ? toplevel->decoration->height : geo.height;
-      bool is_focused = (toplevel_get_surface(toplevel) == focused_surface);
-
-      const char *group_id = toplevel->group ? toplevel->group->group_id : NULL;
-      written = snprintf(ptr, remaining,
-          "%s{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\","
-          "\"workspace\":%d,\"geometry\":{\"x\":%.0f,\"y\":%.0f,"
-          "\"width\":%d,\"height\":%d},\"focused\":%s,\"group\":%s%s%s}",
-          first ? "" : ",",
-          toplevel->window_id ? toplevel->window_id : "",
-          app_id, title,
-          ws->index + 1,
-          toplevel->logical_x, toplevel->logical_y,
-          width, height,
-          is_focused ? "true" : "false",
-          group_id ? "\"" : "",
-          group_id ? group_id : "null",
-          group_id ? "\"" : "");
-
-      ptr += written;
-      remaining -= written;
-      first = false;
+      json_object *window = json_toplevel(server, toplevel, true, true);
+      if (!window) {
+        json_object_put(windows);
+        send_error(client_fd, "out of memory");
+        return;
+      }
+      json_object_array_add(windows, window);
     }
   }
 
-  snprintf(ptr, remaining, "]");
-  send_response(client_fd, true, buf);
+  send_json_data(client_fd, windows);
 }
 
 static void handle_get_window(struct planar_server *server, int client_fd, const char *window_id) {
   struct planar_toplevel *toplevel = find_toplevel_by_id(server, window_id);
   if (!toplevel) {
-    send_response(client_fd, false, "window not found");
+    send_error(client_fd, "window not found");
     return;
   }
 
-  struct wlr_surface *focused_surface = server->seat->keyboard_state.focused_surface;
-  const char *app_id = toplevel_get_app_id(toplevel) ? toplevel_get_app_id(toplevel) : "";
-  const char *title = toplevel_get_title(toplevel) ? toplevel_get_title(toplevel) : "";
-  struct wlr_box geo;
-  toplevel_get_geometry(toplevel, &geo);
-  int width = toplevel->decoration ? toplevel->decoration->width : geo.width;
-  int height = toplevel->decoration ? toplevel->decoration->height : geo.height;
-  bool is_focused = (toplevel_get_surface(toplevel) == focused_surface);
-  const char *group_id = toplevel->group ? toplevel->group->group_id : NULL;
-
-  char buf[IPC_BUFFER_SIZE];
-  snprintf(buf, sizeof(buf),
-      "{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\","
-      "\"workspace\":%d,\"geometry\":{\"x\":%.0f,\"y\":%.0f,"
-      "\"width\":%d,\"height\":%d},\"focused\":%s,\"group\":%s%s%s}",
-      toplevel->window_id ? toplevel->window_id : "",
-      app_id, title,
-      toplevel->workspace->index + 1,
-      toplevel->logical_x, toplevel->logical_y,
-      width, height,
-      is_focused ? "true" : "false",
-      group_id ? "\"" : "",
-      group_id ? group_id : "null",
-      group_id ? "\"" : "");
-
-  send_response(client_fd, true, buf);
+  send_json_data(client_fd, json_toplevel(server, toplevel, true, true));
 }
 
 static void handle_get_focused(struct planar_server *server, int client_fd) {
   struct planar_toplevel *toplevel =
       find_toplevel_by_surface(server, server->seat->keyboard_state.focused_surface);
   if (!toplevel) {
-    send_response(client_fd, true, "null");
+    send_json_data(client_fd, json_object_new_null());
     return;
   }
 
-  const char *app_id = toplevel_get_app_id(toplevel) ? toplevel_get_app_id(toplevel) : "";
-  const char *title = toplevel_get_title(toplevel) ? toplevel_get_title(toplevel) : "";
-  struct wlr_box geo;
-  toplevel_get_geometry(toplevel, &geo);
-  int width = toplevel->decoration ? toplevel->decoration->width : geo.width;
-  int height = toplevel->decoration ? toplevel->decoration->height : geo.height;
-
-  char buf[IPC_BUFFER_SIZE];
-  snprintf(buf, sizeof(buf),
-      "{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\","
-      "\"workspace\":%d,\"geometry\":{\"x\":%.0f,\"y\":%.0f,"
-      "\"width\":%d,\"height\":%d}}",
-      toplevel->window_id ? toplevel->window_id : "",
-      app_id, title,
-      toplevel->workspace->index + 1,
-      toplevel->logical_x, toplevel->logical_y,
-      width, height);
-
-  send_response(client_fd, true, buf);
+  send_json_data(client_fd, json_toplevel(server, toplevel, false, false));
 }
 
 static void handle_get_groups(struct planar_server *server, int client_fd) {
-  char buf[IPC_BUFFER_SIZE * 2];
-  char *ptr = buf;
-  int remaining = sizeof(buf);
-  int written;
-
-  written = snprintf(ptr, remaining, "[");
-  ptr += written;
-  remaining -= written;
-
-  bool first = true;
-  struct planar_group *group;
-  wl_list_for_each(group, &server->groups, link) {
-    written = snprintf(ptr, remaining,
-        "%s{\"id\":\"%s\",\"member_count\":%d,\"color\":[%.2f,%.2f,%.2f,%.2f],\"members\":[",
-        first ? "" : ",",
-        group->group_id,
-        group_member_count(group),
-        group->border_color[0], group->border_color[1],
-        group->border_color[2], group->border_color[3]);
-    ptr += written;
-    remaining -= written;
-
-    bool first_member = true;
-    struct planar_group_member *member;
-    wl_list_for_each(member, &group->members, link) {
-      if (member->toplevel && member->toplevel->window_id) {
-        written = snprintf(ptr, remaining, "%s\"%s\"",
-            first_member ? "" : ",",
-            member->toplevel->window_id);
-        ptr += written;
-        remaining -= written;
-        first_member = false;
-      }
-    }
-
-    written = snprintf(ptr, remaining, "]}");
-    ptr += written;
-    remaining -= written;
-    first = false;
+  json_object *groups = json_object_new_array();
+  if (!groups) {
+    send_error(client_fd, "out of memory");
+    return;
   }
 
-  snprintf(ptr, remaining, "]");
-  send_response(client_fd, true, buf);
+  struct planar_group *group;
+  wl_list_for_each(group, &server->groups, link) {
+    json_object *group_json = json_group(group);
+    if (!group_json) {
+      json_object_put(groups);
+      send_error(client_fd, "out of memory");
+      return;
+    }
+    json_object_array_add(groups, group_json);
+  }
+
+  send_json_data(client_fd, groups);
 }
 
 static void handle_get_group(struct planar_server *server, int client_fd, const char *group_id) {
   struct planar_group *group = find_group_by_id(server, group_id);
   if (!group) {
-    send_response(client_fd, false, "group not found");
+    send_error(client_fd, "group not found");
     return;
   }
 
-  char buf[IPC_BUFFER_SIZE];
-  char *ptr = buf;
-  int remaining = sizeof(buf);
-  int written;
-
-  written = snprintf(ptr, remaining,
-      "{\"id\":\"%s\",\"member_count\":%d,\"color\":[%.2f,%.2f,%.2f,%.2f],\"members\":[",
-      group->group_id,
-      group_member_count(group),
-      group->border_color[0], group->border_color[1],
-      group->border_color[2], group->border_color[3]);
-  ptr += written;
-  remaining -= written;
-
-  bool first = true;
-  struct planar_group_member *member;
-  wl_list_for_each(member, &group->members, link) {
-    if (member->toplevel && member->toplevel->window_id) {
-      written = snprintf(ptr, remaining, "%s\"%s\"",
-          first ? "" : ",",
-          member->toplevel->window_id);
-      ptr += written;
-      remaining -= written;
-      first = false;
-    }
-  }
-
-  snprintf(ptr, remaining, "]}");
-  send_response(client_fd, true, buf);
+  send_json_data(client_fd, json_group(group));
 }
 
 static void handle_get_selection(struct planar_server *server, int client_fd) {
-  char buf[IPC_BUFFER_SIZE];
-  char *ptr = buf;
-  int remaining = sizeof(buf);
-  int written;
+  json_object *selection = json_object_new_array();
+  if (!selection) {
+    send_error(client_fd, "out of memory");
+    return;
+  }
 
-  written = snprintf(ptr, remaining, "[");
-  ptr += written;
-  remaining -= written;
-
-  bool first = true;
   struct planar_selection_entry *entry;
   wl_list_for_each(entry, &server->selected_toplevels, link) {
     if (entry->toplevel && entry->toplevel->window_id) {
-      written = snprintf(ptr, remaining, "%s\"%s\"",
-          first ? "" : ",",
-          entry->toplevel->window_id);
-      ptr += written;
-      remaining -= written;
-      first = false;
+      json_object_array_add(selection,
+          json_string_or_empty(entry->toplevel->window_id));
     }
   }
 
-  snprintf(ptr, remaining, "]");
-  send_response(client_fd, true, buf);
+  send_json_data(client_fd, selection);
 }
 
 static void handle_get_command(struct planar_server *server, int client_fd,
                                const char *args) {
   char setting[64];
   if (sscanf(args, "%63s", setting) != 1) {
-    send_response(client_fd, false, "missing setting name");
+    send_error(client_fd, "missing setting name");
     return;
   }
 
-  char buf[256];
   if (strcmp(setting, "border_width") == 0) {
-    snprintf(buf, sizeof(buf), "%d", server->settings.border_width);
-    send_response(client_fd, true, buf);
+    send_json_data(client_fd, json_object_new_int(server->settings.border_width));
   } else if (strcmp(setting, "border_color") == 0) {
-    snprintf(buf, sizeof(buf), "[%.2f,%.2f,%.2f,%.2f]",
-             server->settings.border_color[0], server->settings.border_color[1],
-             server->settings.border_color[2],
-             server->settings.border_color[3]);
-    send_response(client_fd, true, buf);
+    json_object *color = json_object_new_array();
+    if (!color) {
+      send_error(client_fd, "out of memory");
+      return;
+    }
+    for (size_t i = 0; i < 4; i++) {
+      json_object_array_add(color,
+          json_object_new_double(server->settings.border_color[i]));
+    }
+    send_json_data(client_fd, color);
   } else if (strcmp(setting, "zoom_min") == 0) {
-    snprintf(buf, sizeof(buf), "%.2f", server->settings.zoom_min);
-    send_response(client_fd, true, buf);
+    send_json_data(client_fd, json_object_new_double(server->settings.zoom_min));
   } else if (strcmp(setting, "zoom_max") == 0) {
-    snprintf(buf, sizeof(buf), "%.2f", server->settings.zoom_max);
-    send_response(client_fd, true, buf);
+    send_json_data(client_fd, json_object_new_double(server->settings.zoom_max));
   } else if (strcmp(setting, "zoom_step") == 0) {
-    snprintf(buf, sizeof(buf), "%.2f", server->settings.zoom_step);
-    send_response(client_fd, true, buf);
+    send_json_data(client_fd, json_object_new_double(server->settings.zoom_step));
   } else if (strcmp(setting, "cursor_size") == 0) {
-    snprintf(buf, sizeof(buf), "%d", server->settings.cursor_size);
-    send_response(client_fd, true, buf);
+    send_json_data(client_fd, json_object_new_int(server->settings.cursor_size));
   } else if (strcmp(setting, "snap_enabled") == 0) {
-    snprintf(buf, sizeof(buf), "%s", server->settings.snap_enabled ? "true" : "false");
-    send_response(client_fd, true, buf);
+    send_json_data(client_fd, json_object_new_boolean(server->settings.snap_enabled));
   } else if (strcmp(setting, "snap_threshold") == 0) {
-    snprintf(buf, sizeof(buf), "%d", server->settings.snap_threshold);
-    send_response(client_fd, true, buf);
+    send_json_data(client_fd, json_object_new_int(server->settings.snap_threshold));
   } else if (strcmp(setting, "workspaces") == 0) {
     handle_get_workspaces(server, client_fd);
   } else if (strcmp(setting, "focused") == 0) {
@@ -355,7 +367,7 @@ static void handle_get_command(struct planar_server *server, int client_fd,
     if (*window_id) {
       handle_get_window(server, client_fd, window_id);
     } else {
-      send_response(client_fd, false, "missing window id");
+      send_error(client_fd, "missing window id");
     }
   } else if (strcmp(setting, "groups") == 0) {
     handle_get_groups(server, client_fd);
@@ -365,50 +377,20 @@ static void handle_get_command(struct planar_server *server, int client_fd,
     if (*group_id) {
       handle_get_group(server, client_fd, group_id);
     } else {
-      send_response(client_fd, false, "missing group id");
+      send_error(client_fd, "missing group id");
     }
   } else if (strcmp(setting, "selection") == 0) {
     handle_get_selection(server, client_fd);
   } else if (strcmp(setting, "nodecoration") == 0) {
-    char buf[IPC_BUFFER_SIZE];
-    char *ptr = buf;
-    int remaining = sizeof(buf);
-    int written;
-
-    written = snprintf(ptr, remaining, "[");
-    ptr += written;
-    remaining -= written;
-
-    for (size_t i = 0; i < server->window_rules.nodecoration_count; i++) {
-      written = snprintf(ptr, remaining, "%s\"%s\"",
-          i == 0 ? "" : ",",
-          server->window_rules.nodecoration[i]);
-      ptr += written;
-      remaining -= written;
-    }
-    snprintf(ptr, remaining, "]");
-    send_response(client_fd, true, buf);
+    send_json_data(client_fd, json_string_array(
+        server->window_rules.nodecoration,
+        server->window_rules.nodecoration_count));
   } else if (strcmp(setting, "ontop") == 0) {
-    char buf[IPC_BUFFER_SIZE];
-    char *ptr = buf;
-    int remaining = sizeof(buf);
-    int written;
-
-    written = snprintf(ptr, remaining, "[");
-    ptr += written;
-    remaining -= written;
-
-    for (size_t i = 0; i < server->window_rules.ontop_count; i++) {
-      written = snprintf(ptr, remaining, "%s\"%s\"",
-          i == 0 ? "" : ",",
-          server->window_rules.ontop[i]);
-      ptr += written;
-      remaining -= written;
-    }
-    snprintf(ptr, remaining, "]");
-    send_response(client_fd, true, buf);
+    send_json_data(client_fd, json_string_array(
+        server->window_rules.ontop,
+        server->window_rules.ontop_count));
   } else {
-    send_response(client_fd, false, "unknown setting");
+    send_error(client_fd, "unknown setting");
   }
 }
 
@@ -1091,7 +1073,7 @@ static void handle_command(struct planar_server *server, int client_fd,
   }
 
   if (strlen(cmd) == 0) {
-    send_response(client_fd, false, "empty command");
+    send_error(client_fd, "empty command");
     return;
   }
 
@@ -1103,9 +1085,9 @@ static void handle_command(struct planar_server *server, int client_fd,
   }
 
   if (ipc_dispatch_command(server, cmd)) {
-    send_response(client_fd, true, NULL);
+    send_ok(client_fd);
   } else {
-    send_response(client_fd, false, "unknown or invalid command");
+    send_error(client_fd, "unknown or invalid command");
   }
 }
 
@@ -1324,10 +1306,17 @@ void ipc_broadcast_event(struct planar_server *server, const char *event_type,
   } else {
     len = snprintf(buf, sizeof(buf), "%s\n", event_type);
   }
+  if (len < 0) {
+    return;
+  }
+  if ((size_t)len >= sizeof(buf)) {
+    len = sizeof(buf) - 1;
+    buf[len] = '\0';
+  }
 
   struct ipc_client *client, *tmp;
   wl_list_for_each_safe(client, tmp, &server->ipc_event_clients, link) {
-    if (write(client->fd, buf, len) < 0) {
+    if (!write_all(client->fd, buf, len)) {
       wlr_log(WLR_DEBUG, "Event client disconnected");
     }
   }

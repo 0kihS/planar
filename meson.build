@@ -23,6 +23,7 @@ cc = meson.get_compiler('c')
 wlroots = dependency('wlroots-0.19')
 wayland_server = dependency('wayland-server')
 xkbcommon = dependency('xkbcommon')
+jsonc = dependency('json-c')
 math = cc.find_library('m')
 
 # Subproject: scenefx (drop-in wlr_scene replacement with effects)
@@ -103,6 +104,7 @@ executable(
 		wlroots,
 		wayland_server,
 		xkbcommon,
+		jsonc,
 		math,
 		toml_dep,
 		protocols_server_dep
