@@ -1321,3 +1321,15 @@ void ipc_broadcast_event(struct planar_server *server, const char *event_type,
     }
   }
 }
+
+void ipc_broadcast_json_event(struct planar_server *server, const char *event_type,
+                              json_object *data) {
+  if (!data) {
+    return;
+  }
+
+  const char *json = json_object_to_json_string_ext(data,
+      JSON_C_TO_STRING_PLAIN);
+  ipc_broadcast_event(server, event_type, json);
+  json_object_put(data);
+}

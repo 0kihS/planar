@@ -6,6 +6,7 @@
 #include "group.h"
 #include "selection.h"
 
+#include <json-c/json.h>
 #include <scenefx/types/wlr_scene.h>
 #include <math.h>
 #include <stdio.h>
@@ -135,25 +136,42 @@ static void toplevel_emit_open_event(struct planar_toplevel *toplevel) {
     int width = toplevel->decoration ? toplevel->decoration->width : geo.width;
     int height = toplevel->decoration ? toplevel->decoration->height : geo.height;
 
-    char event_data[512];
-    snprintf(event_data, sizeof(event_data),
-        "{\"id\":\"%s\",\"app_id\":\"%s\",\"title\":\"%s\",\"workspace\":%d,"
-        "\"geometry\":{\"x\":%.0f,\"y\":%.0f,\"width\":%d,\"height\":%d}}",
-        toplevel->window_id ? toplevel->window_id : "",
-        app_id ? app_id : "",
-        title ? title : "",
-        toplevel->workspace ? toplevel->workspace->index + 1 : 0,
-        toplevel->logical_x, toplevel->logical_y,
-        width, height);
+    json_object *event = json_object_new_object();
+    json_object *geometry = json_object_new_object();
+    if (!event || !geometry) {
+        json_object_put(event);
+        json_object_put(geometry);
+        return;
+    }
 
-    ipc_broadcast_event(toplevel->server, "window_open", event_data);
+    json_object_object_add(event, "id",
+        json_object_new_string(toplevel->window_id ? toplevel->window_id : ""));
+    json_object_object_add(event, "app_id",
+        json_object_new_string(app_id ? app_id : ""));
+    json_object_object_add(event, "title",
+        json_object_new_string(title ? title : ""));
+    json_object_object_add(event, "workspace",
+        json_object_new_int(toplevel->workspace ? toplevel->workspace->index + 1 : 0));
+    json_object_object_add(geometry, "x",
+        json_object_new_int((int)lround(toplevel->logical_x)));
+    json_object_object_add(geometry, "y",
+        json_object_new_int((int)lround(toplevel->logical_y)));
+    json_object_object_add(geometry, "width", json_object_new_int(width));
+    json_object_object_add(geometry, "height", json_object_new_int(height));
+    json_object_object_add(event, "geometry", geometry);
+
+    ipc_broadcast_json_event(toplevel->server, "window_open", event);
 }
 
 static void toplevel_emit_close_event(struct planar_toplevel *toplevel) {
-    char event_data[256];
-    snprintf(event_data, sizeof(event_data), "{\"id\":\"%s\"}",
-        toplevel->window_id ? toplevel->window_id : "");
-    ipc_broadcast_event(toplevel->server, "window_close", event_data);
+    json_object *event = json_object_new_object();
+    if (!event) {
+        return;
+    }
+
+    json_object_object_add(event, "id",
+        json_object_new_string(toplevel->window_id ? toplevel->window_id : ""));
+    ipc_broadcast_json_event(toplevel->server, "window_close", event);
 }
 
 struct planar_toplevel *find_toplevel_by_id(struct planar_server *server, const char *window_id) {
@@ -1118,11 +1136,16 @@ void focus_toplevel(struct planar_toplevel *toplevel, struct wlr_surface *surfac
 
     focus_surface(server, root_surface);
 
-    char event_data[256];
-    snprintf(event_data, sizeof(event_data), "{\"id\":\"%s\",\"app_id\":\"%s\"}",
-        toplevel->window_id ? toplevel->window_id : "",
-        toplevel_get_app_id(toplevel) ? toplevel_get_app_id(toplevel) : "");
-    ipc_broadcast_event(server, "window_focus", event_data);
+    json_object *event = json_object_new_object();
+    if (!event) {
+        return;
+    }
+
+    json_object_object_add(event, "id",
+        json_object_new_string(toplevel->window_id ? toplevel->window_id : ""));
+    json_object_object_add(event, "app_id",
+        json_object_new_string(toplevel_get_app_id(toplevel) ? toplevel_get_app_id(toplevel) : ""));
+    ipc_broadcast_json_event(server, "window_focus", event);
 }
 
 void kill_active_toplevel(struct planar_server *server) {

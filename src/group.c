@@ -5,6 +5,7 @@
 #include "workspaces.h"
 #include "ipc.h"
 
+#include <json-c/json.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -23,6 +24,30 @@ static const float group_palette[][4] = {
 };
 static const int group_palette_size = sizeof(group_palette) / sizeof(group_palette[0]);
 static uint32_t next_color_index = 0;
+
+static json_object *group_id_event(const char *group_id) {
+    json_object *event = json_object_new_object();
+    if (!event) {
+        return NULL;
+    }
+
+    json_object_object_add(event, "id",
+        json_object_new_string(group_id ? group_id : ""));
+    return event;
+}
+
+static json_object *group_window_event(const char *group_id, const char *window_id) {
+    json_object *event = json_object_new_object();
+    if (!event) {
+        return NULL;
+    }
+
+    json_object_object_add(event, "group",
+        json_object_new_string(group_id ? group_id : ""));
+    json_object_object_add(event, "window",
+        json_object_new_string(window_id ? window_id : ""));
+    return event;
+}
 
 struct planar_group *group_create(struct planar_server *server, const char *group_id) {
     struct planar_group *group = calloc(1, sizeof(*group));
@@ -57,9 +82,8 @@ struct planar_group *group_create(struct planar_server *server, const char *grou
     wl_list_insert(&server->groups, &group->link);
 
     // Broadcast group_create event
-    char event_data[512];
-    snprintf(event_data, sizeof(event_data), "{\"id\":\"%s\"}", group->group_id);
-    ipc_broadcast_event(server, "group_create", event_data);
+    ipc_broadcast_json_event(server, "group_create",
+        group_id_event(group->group_id));
 
     return group;
 }
@@ -69,9 +93,8 @@ void group_destroy(struct planar_group *group) {
 
     // Broadcast group_delete event before destroying
     if (group->server) {
-        char event_data[512];
-        snprintf(event_data, sizeof(event_data), "{\"id\":\"%s\"}", group->group_id);
-        ipc_broadcast_event(group->server, "group_delete", event_data);
+        ipc_broadcast_json_event(group->server, "group_delete",
+            group_id_event(group->group_id));
     }
 
     // Remove all members first
@@ -130,11 +153,8 @@ bool group_add_toplevel(struct planar_group *group, struct planar_toplevel *topl
 
     // Broadcast group_add event
     if (group->server && toplevel->window_id) {
-        char event_data[512];
-        snprintf(event_data, sizeof(event_data),
-            "{\"group\":\"%s\",\"window\":\"%s\"}",
-            group->group_id, toplevel->window_id);
-        ipc_broadcast_event(group->server, "group_add", event_data);
+        ipc_broadcast_json_event(group->server, "group_add",
+            group_window_event(group->group_id, toplevel->window_id));
     }
 
     return true;
@@ -150,11 +170,8 @@ bool group_remove_toplevel(struct planar_group *group, struct planar_toplevel *t
 
     // Broadcast group_remove event before removing
     if (group->server && toplevel->window_id) {
-        char event_data[512];
-        snprintf(event_data, sizeof(event_data),
-            "{\"group\":\"%s\",\"window\":\"%s\"}",
-            group->group_id, toplevel->window_id);
-        ipc_broadcast_event(group->server, "group_remove", event_data);
+        ipc_broadcast_json_event(group->server, "group_remove",
+            group_window_event(group->group_id, toplevel->window_id));
     }
 
     wl_list_remove(&member->link);
