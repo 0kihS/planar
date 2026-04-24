@@ -575,6 +575,11 @@ bool ipc_dispatch_command(struct planar_server *server, const char *cmd) {
     return true;
   }
 
+  if (strcmp(cmd, "exit") == 0 || strcmp(cmd, "quit") == 0) {
+    wl_display_terminate(server->wl_display);
+    return true;
+  }
+
   if (strncmp(cmd, "move_to_workspace ", 18) == 0) {
     int ws;
     if (sscanf(cmd + 18, "%d", &ws) == 1) {

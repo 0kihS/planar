@@ -440,23 +440,29 @@ void server_finish(struct planar_server *server) {
     if (server->seat) {
         seat_finish(server);
     }
+    cursor_destroy(server);
+    if (server->backend) {
+        wlr_backend_destroy(server->backend);
+        server->backend = NULL;
+    }
     if (server->scene) {
         wlr_scene_node_destroy(&server->scene->tree.node);
+        server->scene = NULL;
     }
-    cursor_destroy(server);
     if (server->output_layout) {
         wlr_output_layout_destroy(server->output_layout);
+        server->output_layout = NULL;
     }
     if (server->allocator) {
         wlr_allocator_destroy(server->allocator);
+        server->allocator = NULL;
     }
     if (server->renderer) {
         wlr_renderer_destroy(server->renderer);
-    }
-    if (server->backend) {
-        wlr_backend_destroy(server->backend);
+        server->renderer = NULL;
     }
     if (server->wl_display) {
         wl_display_destroy(server->wl_display);
+        server->wl_display = NULL;
     }
 }
