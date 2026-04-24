@@ -18,9 +18,12 @@ int main(void) {
 
     struct planar_server server = {0};
     global_server = &server;
-    server_init(&server);
+    if (!server_init(&server)) {
+        server_finish(&server);
+        return EXIT_FAILURE;
+    }
 
-	setenv("WAYLAND_DISPLAY", server.socket, true);
+    setenv("WAYLAND_DISPLAY", server.socket, true);
 
     wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s", server.socket);
     wlr_log(WLR_INFO, "WAYLAND_DISPLAY set to %s", getenv("WAYLAND_DISPLAY"));
@@ -28,8 +31,8 @@ int main(void) {
     signal(SIGINT, handle_signal);
     signal(SIGTERM, handle_signal);
 
-    server_run(&server);
+    bool ok = server_run(&server);
     server_finish(&server);
 
-    return 0;
+    return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

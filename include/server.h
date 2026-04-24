@@ -157,8 +157,8 @@ bool window_rules_remove_nodecoration(struct planar_server *server, const char *
 bool window_rules_add_ontop(struct planar_server *server, const char *app_id);
 bool window_rules_remove_ontop(struct planar_server *server, const char *app_id);
 
-void server_init(struct planar_server *server);
-void server_run(struct planar_server *server);
+bool server_init(struct planar_server *server);
+bool server_run(struct planar_server *server);
 void server_finish(struct planar_server *server);
 
 #endif // PLANAR_SERVER_H

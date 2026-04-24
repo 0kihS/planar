@@ -193,18 +193,56 @@ static void server_xwayland_ready(struct wl_listener *listener, void *data) {
 }
 #endif
 
-void server_init(struct planar_server *server) {
+static void remove_server_listener(struct wl_listener *listener) {
+    if (listener->link.prev != NULL) {
+        wl_list_remove(&listener->link);
+        listener->link.prev = NULL;
+        listener->link.next = NULL;
+    }
+}
+
+bool server_init(struct planar_server *server) {
     wl_list_init(&server->ipc_clients);
     wl_list_init(&server->ipc_event_clients);
+    wl_list_init(&server->outputs);
+    wl_list_init(&server->workspaces);
+    wl_list_init(&server->groups);
+    wl_list_init(&server->selected_toplevels);
+    wl_list_init(&server->keyboards);
     server->ipc_socket = -1;
     server->ipc_event_socket = -1;
 
     server->wl_display = wl_display_create();
+    if (!server->wl_display) {
+        wlr_log(WLR_ERROR, "Unable to create Wayland display");
+        return false;
+    }
+
+    const char *socket = wl_display_add_socket_auto(server->wl_display);
+    if (!socket) {
+        wlr_log(WLR_ERROR, "Unable to create Wayland socket");
+        return false;
+    }
+    server->socket = socket;
+
     server->backend = wlr_backend_autocreate(wl_display_get_event_loop(server->wl_display), NULL);
+    if (!server->backend) {
+        wlr_log(WLR_ERROR, "Unable to create backend");
+        return false;
+    }
+
     server->renderer = fx_renderer_create(server->backend);
+    if (!server->renderer) {
+        wlr_log(WLR_ERROR, "Unable to create renderer");
+        return false;
+    }
     wlr_renderer_init_wl_display(server->renderer, server->wl_display);
 
     server->allocator = wlr_allocator_autocreate(server->backend, server->renderer);
+    if (!server->allocator) {
+        wlr_log(WLR_ERROR, "Unable to create allocator");
+        return false;
+    }
 
     server->compositor = wlr_compositor_create(server->wl_display, 5, server->renderer);
     wlr_subcompositor_create(server->wl_display);
@@ -214,7 +252,6 @@ void server_init(struct planar_server *server) {
     wlr_ext_data_control_manager_v1_create(server->wl_display, 1);
     wlr_screencopy_manager_v1_create(server->wl_display);
 
-    wl_list_init(&server->outputs);
     server->new_output.notify = server_new_output;
     wl_signal_add(&server->backend->events.new_output, &server->new_output);
 
@@ -281,9 +318,6 @@ void server_init(struct planar_server *server) {
     server->settings.snap_enabled = true;
     server->settings.snap_threshold = 10;
 
-    wl_list_init(&server->workspaces);
-    wl_list_init(&server->groups);
-    wl_list_init(&server->selected_toplevels);
     server->selection_box = NULL;
     for (int i = 0; i < WORKSPACE_COUNT; i++) {
         struct planar_workspace *ws = calloc(1, sizeof(*ws));
@@ -302,7 +336,6 @@ void server_init(struct planar_server *server) {
 
     cursor_init(server);
 
-    wl_list_init(&server->keyboards);
     server->new_input.notify = server_new_input;
     wl_signal_add(&server->backend->events.new_input, &server->new_input);
 
@@ -323,14 +356,6 @@ void server_init(struct planar_server *server) {
         workspace->global_offset.x = 0;
         workspace->global_offset.y = 0;
     }
-
-    const char *socket = wl_display_add_socket_auto(server->wl_display);
-    if (!socket) {
-        wlr_log(WLR_ERROR, "Unable to create Wayland socket");
-        return;
-    }
-
-    server->socket = socket;
 
     /* Initialize snap system */
     snap_init(server);
@@ -365,34 +390,38 @@ void server_init(struct planar_server *server) {
     }
 
     switch_to_workspace(server, 0);
-
-    if (server->config && server->config->startup_cmd) {
-        handle_external_command(server->config->startup_cmd);
-    }
+    return true;
 }
 
-void server_run(struct planar_server *server) {
+bool server_run(struct planar_server *server) {
 
     if (!wlr_backend_start(server->backend)) {
         wlr_log(WLR_ERROR, "Unable to start backend");
-        return;
+        return false;
+    }
+    if (server->config && server->config->startup_cmd) {
+        handle_external_command(server->config->startup_cmd);
     }
     wl_display_run(server->wl_display);
+    return true;
 }
 
 void server_finish(struct planar_server *server) {
     snap_finish(server);
     ipc_finish(server);
-    wl_display_destroy_clients(server->wl_display);
-    wl_list_remove(&server->new_input.link);
-    wl_list_remove(&server->new_output.link);
-    wl_list_remove(&server->new_xdg_toplevel.link);
-    wl_list_remove(&server->new_xdg_popup.link);
-    wl_list_remove(&server->new_layer_shell_surface.link);
+    if (server->wl_display) {
+        wl_display_destroy_clients(server->wl_display);
+    }
+    remove_server_listener(&server->new_input);
+    remove_server_listener(&server->new_output);
+    remove_server_listener(&server->new_xdg_toplevel);
+    remove_server_listener(&server->new_xdg_popup);
+    remove_server_listener(&server->new_layer_shell_surface);
+    remove_server_listener(&server->new_toplevel_decoration);
 #if WLR_HAS_XWAYLAND
     if (server->xwayland) {
-        wl_list_remove(&server->new_xwayland_surface.link);
-        wl_list_remove(&server->xwayland_ready.link);
+        remove_server_listener(&server->new_xwayland_surface);
+        remove_server_listener(&server->xwayland_ready);
         wlr_xwayland_destroy(server->xwayland);
     }
 #endif
@@ -425,12 +454,26 @@ void server_finish(struct planar_server *server) {
     if (server->config) {
         config_destroy(server->config);
     }
-    seat_finish(server);
-    wlr_scene_node_destroy(&server->scene->tree.node);
+    if (server->seat) {
+        seat_finish(server);
+    }
+    if (server->scene) {
+        wlr_scene_node_destroy(&server->scene->tree.node);
+    }
     cursor_destroy(server);
-    wlr_output_layout_destroy(server->output_layout);
-    wlr_allocator_destroy(server->allocator);
-    wlr_renderer_destroy(server->renderer);
-    wlr_backend_destroy(server->backend);
-    wl_display_destroy(server->wl_display);
+    if (server->output_layout) {
+        wlr_output_layout_destroy(server->output_layout);
+    }
+    if (server->allocator) {
+        wlr_allocator_destroy(server->allocator);
+    }
+    if (server->renderer) {
+        wlr_renderer_destroy(server->renderer);
+    }
+    if (server->backend) {
+        wlr_backend_destroy(server->backend);
+    }
+    if (server->wl_display) {
+        wl_display_destroy(server->wl_display);
+    }
 }
