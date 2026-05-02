@@ -19,6 +19,7 @@
 #include <scenefx/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_activation_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #if WLR_HAS_XWAYLAND
 #include <wlr/xwayland.h>
@@ -46,6 +47,8 @@ struct planar_server {
 	struct wlr_scene_output_layout *scene_layout;
 
 	struct wlr_xdg_shell *xdg_shell;
+	struct wlr_xdg_activation_v1 *xdg_activation;
+	struct wl_listener request_activate;
 #if WLR_HAS_XWAYLAND
 	struct wlr_xwayland *xwayland;
 	struct wl_listener new_xwayland_surface;

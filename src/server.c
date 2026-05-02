@@ -164,6 +164,23 @@ static void server_new_output(struct wl_listener *listener, void *data) {
     output_create(listener, data);
 }
 
+static void server_request_activate(struct wl_listener *listener, void *data) {
+    struct planar_server *server = wl_container_of(listener, server, request_activate);
+    struct wlr_xdg_activation_v1_request_activate_event *event = data;
+
+    struct planar_toplevel *toplevel =
+        find_toplevel_by_surface(server, event->surface);
+    if (!toplevel || !toplevel_is_mapped(toplevel)) {
+        return;
+    }
+
+    if (toplevel->workspace && toplevel->workspace != server->active_workspace) {
+        switch_to_workspace(server, toplevel->workspace->index);
+    }
+
+    focus_toplevel(toplevel, event->surface);
+}
+
 #if WLR_HAS_XWAYLAND
 static void server_xwayland_ready(struct wl_listener *listener, void *data) {
     (void)data;
@@ -254,6 +271,14 @@ bool server_init(struct planar_server *server) {
 
     server->xdg_shell = wlr_xdg_shell_create(server->wl_display, 3);
     assert(server->xdg_shell);
+
+    server->xdg_activation =
+        wlr_xdg_activation_v1_create(server->wl_display);
+    if (server->xdg_activation) {
+        server->request_activate.notify = server_request_activate;
+        wl_signal_add(&server->xdg_activation->events.request_activate,
+            &server->request_activate);
+    }
 
 #if WLR_HAS_XWAYLAND
     server->xwayland = wlr_xwayland_create(server->wl_display, server->compositor, true);
@@ -399,6 +424,7 @@ void server_finish(struct planar_server *server) {
     remove_server_listener(&server->new_output);
     remove_server_listener(&server->new_xdg_toplevel);
     remove_server_listener(&server->new_xdg_popup);
+    remove_server_listener(&server->request_activate);
     remove_server_listener(&server->new_layer_shell_surface);
     remove_server_listener(&server->new_toplevel_decoration);
 #if WLR_HAS_XWAYLAND
