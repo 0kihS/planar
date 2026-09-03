@@ -20,7 +20,7 @@ add_project_arguments(
 cc = meson.get_compiler('c')
 
 # Dependencies
-wlroots = dependency('wlroots-0.19')
+wlroots = dependency('wlroots-0.20')
 wayland_server = dependency('wayland-server')
 xkbcommon = dependency('xkbcommon')
 jsonc = dependency('json-c')
